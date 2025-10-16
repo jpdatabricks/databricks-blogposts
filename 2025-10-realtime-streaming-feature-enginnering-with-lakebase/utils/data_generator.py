@@ -26,7 +26,6 @@ class TransactionDataGenerator:
     def __init__(self, spark_session=None):
         """Initialize the data generator"""
         self.spark = spark_session or SparkSession.getActiveSession()
-        self.output_path = "/mnt/lakebase/streaming_input"
         
     def generate_transaction_data(self, num_users=20, num_merchants=50, rows_per_second=10):
         """

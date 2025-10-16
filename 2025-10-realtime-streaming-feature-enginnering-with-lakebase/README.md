@@ -1,6 +1,6 @@
 # Real-Time Streaming Feature Engineering with Lakebase PostgreSQL
 
-> **📌 PROJECT CONVENTION:** "Lakebase" in this project ALWAYS refers to **Databricks Lakebase PostgreSQL** (OLTP database, port 5432), NOT Delta Lake. See [`PROJECT_CONVENTIONS.md`](PROJECT_CONVENTIONS.md) for details.
+> **📌 PROJECT CONVENTION:** "Lakebase" in this project ALWAYS refers to **Databricks Lakebase PostgreSQL** (OLTP database, port 5432), NOT Delta Lake. See [`.cursorrules`](.cursorrules) for details.
 
 ## Overview
 
@@ -24,54 +24,57 @@ Transaction Stream → Feature Engineering → Lakebase PostgreSQL → Real-time
 
 ### 1. Read Conventions
 ```bash
-cat PROJECT_CONVENTIONS.md  # Understand terminology
+cat .cursorrules  # Understand project conventions and terminology
 ```
 
 ### 2. Provision Lakebase
 ```
 Databricks Workspace:
   → Compute → OLTP Database → Create instance
-  → Name: feature_store
+  → Name: your-instance-name
   → Size: Small (start)
 ```
 
 ### 3. Configure Connection
 ```python
-# Update in 00_setup_and_configuration.ipynb
-host = "your-workspace.cloud.databricks.com"
+# Update in 00_setup.ipynb
+LAKEBASE_CONFIG = {
+    "instance_name": "your-instance-name",
+    "database": "databricks_postgres"
+}
 ```
 
 ### 4. Run Setup
 ```bash
 # Run notebook
-00_setup_and_configuration.ipynb
+00_setup.ipynb
 ```
 
 ### 5. Run Demo
 ```bash
-# Run streaming demo
-01_streaming_lakebase_demo.ipynb
+# Run streaming feature engineering demo
+01_streaming_features.ipynb
 ```
 
 ## File Structure
 
 ```
 project/
-├── PROJECT_CONVENTIONS.md          ← START HERE (terminology)
-├── LAKEBASE_POSTGRESQL_SETUP.md    ← Setup guide
-├── lakebase_client.py              ← PostgreSQL client
-├── data_generator.py               ← Streaming data
-├── feature_engineering.py          ← Feature logic
-├── 00_setup_and_configuration.ipynb ← Initial setup
-└── 01_streaming_lakebase_demo.ipynb ← End-to-end demo
+├── .cursorrules                    ← START HERE (conventions & rules)
+├── README.md                       ← This file
+├── 00_setup.ipynb                  ← Initial setup
+├── 01_streaming_features.ipynb     ← Streaming feature engineering demo
+└── utils/
+    ├── lakebase_client.py          ← PostgreSQL client
+    ├── data_generator.py           ← Streaming data generator
+    └── feature_engineering.py      ← Feature engineering logic
 ```
 
 ## Documentation
 
-1. **[PROJECT_CONVENTIONS.md](PROJECT_CONVENTIONS.md)** - Terminology (read first!)
-2. **[LAKEBASE_POSTGRESQL_SETUP.md](LAKEBASE_POSTGRESQL_SETUP.md)** - Complete setup guide
-3. **[lakebase_connection_guide.md](lakebase_connection_guide.md)** - Connection patterns
-4. **[MIGRATION_SUMMARY.md](MIGRATION_SUMMARY.md)** - Architecture decisions
+1. **[.cursorrules](.cursorrules)** - Project conventions and rules (read first!)
+2. **[00_setup.ipynb](00_setup.ipynb)** - Setup and configuration guide
+3. **[01_streaming_features.ipynb](01_streaming_features.ipynb)** - Feature engineering examples
 
 ## Key Features
 
@@ -85,36 +88,40 @@ project/
 ## Usage Example
 
 ```python
-from lakebase_client import LakebaseClient
-from data_generator import TransactionDataGenerator
-from feature_engineering import AdvancedFeatureEngineering
+from utils.lakebase_client import LakebaseClient
+from utils.data_generator import TransactionDataGenerator
+from utils.feature_engineering import AdvancedFeatureEngineering
 
 # Connect to Lakebase PostgreSQL
 lakebase = LakebaseClient(
-    host="workspace.cloud.databricks.com",
-    port=5432,
-    database="feature_store"
+    instance_name="your-instance-name",
+    database="databricks_postgres"
 )
 
 # Generate streaming data
 generator = TransactionDataGenerator()
-streaming_df = generator.generate_transaction_data(rows_per_second=10)
+streaming_df = generator.generate_transaction_data(
+    num_users=20,
+    num_merchants=50,
+    rows_per_second=10
+)
 
-# Apply features
+# Apply stateless features
 feature_engineer = AdvancedFeatureEngineering()
 df_with_features = feature_engineer.apply_all_features(streaming_df)
 
-# Write to Lakebase PostgreSQL
-query = feature_engineer.write_features_to_lakebase(
-    df=df_with_features,
-    lakebase_client=lakebase
-)
+# Write to Lakebase PostgreSQL using foreachBatch
+query = df_with_features.writeStream \
+    .foreachBatch(lakebase.write_streaming_batch) \
+    .start()
 
 # Query features (real-time serving)
 features = lakebase.read_features("""
     SELECT * FROM transaction_features
-    WHERE user_id = 'user_123'
+    WHERE user_id = 'user_000001'
     AND timestamp > NOW() - INTERVAL '1 hour'
+    ORDER BY timestamp DESC
+    LIMIT 100
 """)
 ```
 

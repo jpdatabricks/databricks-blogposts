@@ -2,10 +2,12 @@
 Advanced Feature Engineering Module for Streaming Transaction Data
 ===================================================================
 
-This module provides comprehensive feature engineering capabilities for streaming
-transaction data, including real-time aggregations, behavioral patterns, time-based,
-velocity, and statistical features. Designed to work with PySpark Structured Streaming
-and write to Databricks Lakebase.
+This module provides streaming-compatible feature engineering capabilities for
+real-time transaction data. All features are stateless transformations designed
+to work with PySpark Structured Streaming and write to Databricks Lakebase PostgreSQL.
+
+**STREAMING-ONLY DESIGN**: This module does NOT support batch processing.
+All features are stateless and compatible with Structured Streaming.
 
 Author: Databricks
 Date: October 2025
@@ -25,17 +27,21 @@ logger = logging.getLogger(__name__)
 
 class AdvancedFeatureEngineering:
     """
-    Advanced feature engineering for streaming transaction data with real-time capabilities.
+    Advanced feature engineering for streaming transaction data.
     
-    This class provides methods to engineer 50+ features from raw transaction data including:
-    - Time-based features (cyclical encoding, business hours, holidays)
-    - Amount-based features (log transforms, categories, statistical features)
-    - Velocity features (windowed aggregations across multiple time windows)
-    - Behavioral features (user patterns, merchant switching, payment methods)
-    - Location features (distance calculations, velocity, consistency)
-    - Statistical features (z-scores, percentiles, standard deviations)
+    **STREAMING-ONLY DESIGN**: All methods produce stateless transformations
+    compatible with PySpark Structured Streaming.
     
-    Supports both batch and streaming DataFrames.
+    This class provides methods to engineer features from raw transaction data:
+    - Time-based features (cyclical encoding, business hours, holidays, year/month/day)
+    - Amount-based features (log transforms, categories, z-scores)
+    - Merchant features (risk scores based on category)
+    - Location features (risk indicators, region classification - optional)
+    - Device features (device type detection - optional)
+    - Network features (IP classification, private/public - optional)
+    
+    **Note**: For stateful features (velocity, behavioral patterns), use separate
+    streaming aggregation pipelines with windowed groupBy operations.
     """
     
     def __init__(self, spark_session=None):
@@ -46,7 +52,6 @@ class AdvancedFeatureEngineering:
             spark_session: SparkSession object. If None, uses active session.
         """
         self.spark = spark_session or SparkSession.getActiveSession()
-        self.feature_store_path = "/mnt/lakebase/transaction_features"
         
     def create_time_based_features(self, df, timestamp_col="timestamp"):
         """
