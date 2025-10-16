@@ -15,6 +15,99 @@
 - ❌ Databricks Feature Store API
 - ❌ Any path like `/mnt/lakebase/*`
 
+## PRIMARY RULE: Streaming-Only Project
+
+**CRITICAL: This project is EXCLUSIVELY for streaming data processing:**
+
+### What This Means:
+1. **ALL code must be streaming-compatible**
+   - Use `readStream` and `writeStream`
+   - Use `foreachBatch` for sinks
+   - Apply watermarks for time-based operations
+   - Use bounded state management
+
+2. **NO batch processing code**
+   - ❌ NO `.read()` for data sources
+   - ❌ NO `.write()` for data sinks
+   - ❌ NO batch-only DataFrame operations
+   - ❌ NO `Window.rangeBetween()` without streaming mode check
+   - ❌ NO batch-only aggregations
+
+3. **Streaming-compatible patterns ONLY**
+   - ✅ `spark.readStream.format("rate")` or other streaming sources
+   - ✅ `.withWatermark("timestamp", "10 minutes")`
+   - ✅ `window("timestamp", "1 hour")` for time-based grouping
+   - ✅ `.writeStream.foreachBatch()` for custom sinks
+   - ✅ `.writeStream.format("console")` for debugging
+
+### Code Generation Rules:
+
+**When generating new code:**
+- ALWAYS assume streaming context
+- NEVER add batch processing logic
+- ALWAYS use streaming-compatible window functions
+- NEVER use Window.rangeBetween() without streaming mode flag
+
+**When modifying existing code:**
+- REMOVE any batch-specific code paths
+- CONVERT batch patterns to streaming equivalents
+- DELETE batch-only methods and functions
+- SIMPLIFY dual-mode code to streaming-only
+
+**When adding features:**
+- ONLY implement streaming-compatible aggregations
+- USE `window()` function for time-based grouping
+- APPLY watermarks for late data handling
+- AVOID unbounded state operations
+
+### Examples of What to REMOVE:
+
+```python
+# ❌ REMOVE: Batch read
+df = spark.read.format("delta").load("/path")
+
+# ❌ REMOVE: Batch write
+df.write.format("delta").save("/path")
+
+# ❌ REMOVE: Batch window with rangeBetween
+Window.partitionBy("user_id").orderBy("timestamp").rangeBetween(-3600, 0)
+
+# ❌ REMOVE: Batch-only aggregations
+df.groupBy("user_id").agg(count("*"))  # Without windowing
+```
+
+### Examples of What to USE:
+
+```python
+# ✅ USE: Streaming read
+df = spark.readStream.format("rate").load()
+
+# ✅ USE: Streaming write with foreachBatch
+df.writeStream.foreachBatch(lambda batch, id: process(batch, id)).start()
+
+# ✅ USE: Streaming window aggregations
+df.groupBy("user_id", window("timestamp", "1 hour")).agg(count("*"))
+
+# ✅ USE: Watermark for late data
+df.withWatermark("timestamp", "10 minutes")
+```
+
+### Function Signature Pattern:
+
+```python
+# ❌ AVOID: Dual-mode functions
+def process_data(df, streaming_mode=True):
+    if streaming_mode:
+        # streaming logic
+    else:
+        # batch logic  # DELETE THIS
+
+# ✅ PREFER: Streaming-only functions
+def process_data(df):
+    # Only streaming logic
+    # No mode flag needed
+```
+
 ## Code Patterns
 
 ### When writing Lakebase connection code:
@@ -78,6 +171,11 @@ Real-time ML Model Serving
 3. ❌ `.format("delta")` for Lakebase writes
 4. ❌ File paths for feature serving
 5. ❌ Referring to Delta Lake as "Lakebase"
+6. ❌ Batch processing code (`.read()`, `.write()`)
+7. ❌ Dual-mode functions with `streaming_mode` flags
+8. ❌ `Window.rangeBetween()` without bounded state
+9. ❌ Unbounded stateful operations
+10. ❌ Batch-only aggregations without time windows
 
 ## What to ALWAYS suggest:
 
@@ -86,6 +184,11 @@ Real-time ML Model Serving
 3. ✅ `foreachBatch` for streaming writes
 4. ✅ SQL queries for feature retrieval
 5. ✅ Port 5432 for connections
+6. ✅ `.readStream` and `.writeStream` for all data operations
+7. ✅ `.withWatermark()` for time-based operations
+8. ✅ `window()` function for time-based grouping
+9. ✅ Streaming-only function signatures (no mode flags)
+10. ✅ Bounded state management patterns
 
 ## Technology Stack
 
@@ -116,6 +219,11 @@ When discussing this project, always reference:
 2. Using Delta Lake APIs when Lakebase is meant
 3. Suggesting file-based storage for real-time serving
 4. Recommending Feature Store API instead of direct PostgreSQL
+5. Adding batch processing code to a streaming-only project
+6. Using `Window.rangeBetween()` in streaming context
+7. Creating dual-mode functions with `streaming_mode` flags
+8. Forgetting to apply watermarks for time-based operations
+9. Using unbounded state operations in streaming
 
 ## When User Says "Lakebase"
 
@@ -123,6 +231,13 @@ Always interpret as:
 - **Lakebase PostgreSQL** (OLTP database at port 5432)
 - Real-time transactional database
 - NOT a data lake or file storage
+
+## When User Says "Process Data" or "Read/Write Data"
+
+Always interpret as:
+- **Streaming operations** using `readStream` and `writeStream`
+- Real-time processing with bounded state
+- NOT batch operations (`.read()` or `.write()`)
 
 ## Code Review Checklist
 
@@ -132,17 +247,33 @@ When reviewing code in this project, verify:
 - [ ] Writes use `foreachBatch` or `write_batch`
 - [ ] Queries are SQL-based (not Spark DataFrame reads)
 - [ ] Documentation mentions PostgreSQL explicitly
+- [ ] ALL data operations use `.readStream` and `.writeStream`
+- [ ] NO batch processing code (`.read()`, `.write()`)
+- [ ] Watermarks applied for time-based operations
+- [ ] Time-based grouping uses `window()` function
+- [ ] NO `Window.rangeBetween()` in streaming context
+- [ ] NO dual-mode functions with `streaming_mode` parameter
+- [ ] State management is bounded (not unbounded)
 
 ## Example Conversation Flow
 
 **User:** "Write features to Lakebase"
-**Correct Response:** Write features to Lakebase PostgreSQL using `lakebase_client.write_streaming_batch()`
+**Correct Response:** Write features to Lakebase PostgreSQL using streaming: `df.writeStream.foreachBatch(lakebase_client.write_streaming_batch).start()`
 
 **User:** "Query features from Lakebase"
 **Correct Response:** Query features from Lakebase PostgreSQL using SQL: `lakebase.read_features("SELECT ...")`
 
 **User:** "Setup Lakebase"
 **Correct Response:** Provision Lakebase PostgreSQL instance in Databricks (Compute → OLTP Database)
+
+**User:** "Read transaction data"
+**Correct Response:** Use streaming read: `df = spark.readStream.format("rate").load()` (NOT batch `.read()`)
+
+**User:** "Add feature engineering"
+**Correct Response:** Add streaming-compatible features using `window()` and watermarks (NOT `Window.rangeBetween()`)
+
+**User:** "Process the data"
+**Correct Response:** Use streaming pipeline with `.writeStream.foreachBatch()` (NOT batch `.write()`)
 
 ## Version Control
 
@@ -151,6 +282,7 @@ This context rule is the source of truth for:
 - Architecture decisions
 - Technology choices
 - Code patterns
+- Streaming-only requirements
 
 Last updated: October 2025
 

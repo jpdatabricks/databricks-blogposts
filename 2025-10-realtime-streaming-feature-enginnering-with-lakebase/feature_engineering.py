@@ -330,12 +330,13 @@ class AdvancedFeatureEngineering:
             cos(radians(col(lon1)) - radians(col(lon2)))
         ) * 6371  # Earth's radius in km
     
-    def create_merchant_features(self, df):
+    def create_merchant_features(self, df, streaming_mode=True):
         """
-        Create merchant-based features
+        Create merchant-based features (streaming-compatible)
         
         Args:
-            df: Input DataFrame
+            df: Input DataFrame (batch or streaming)
+            streaming_mode: If True, uses streaming-compatible aggregations
             
         Returns:
             DataFrame with merchant features
@@ -361,27 +362,86 @@ class AdvancedFeatureEngineering:
         
         df_merchant = df.withColumn("merchant_risk_score", risk_expr)
         
-        # Merchant transaction patterns
-        merchant_window_1h = Window.partitionBy("merchant_id") \
-                                  .orderBy(col("timestamp").cast("long")) \
-                                  .rangeBetween(-3600, 0)
-        
-        # df_merchant = df_merchant \
-            .withColumn("merchant_unique_users_1h",
-                       approx_count_distinct("user_id").over(merchant_window_1h)) \
-            .withColumn("merchant_avg_amount_1h",
-                       avg("amount").over(merchant_window_1h))
-        
-        # User-merchant interaction history
-        user_merchant_window = Window.partitionBy("user_id", "merchant_id").orderBy("timestamp")
-        
-        # df_merchant = df_merchant \
-            .withColumn("user_merchant_txn_count",
-                       count("*").over(user_merchant_window)) \
-            .withColumn("is_new_merchant",
-                       when(col("user_merchant_txn_count") == 1, 1).otherwise(0))
+        if streaming_mode:
+            # STREAMING-COMPATIBLE: Use window() function for time-based aggregations
+            # This approach works with watermarks and bounded state
+            
+            # Create temporary view for windowed aggregations
+            # Note: In production, you'd pre-aggregate these in a separate stream
+            # and join them, or use applyInPandasWithState for stateful processing
+            
+            # For now, we'll use simple flags and ratios that don't require stateful aggregations
+            df_merchant = df_merchant \
+                .withColumn("merchant_category_risk",
+                           when(col("merchant_category").isin(["casino", "adult_entertainment"]), "high")
+                           .when(col("merchant_category").isin(["online_retail", "atm"]), "medium")
+                           .otherwise("low"))
+            
+        else:
+            # BATCH MODE: Use Window functions with rangeBetween
+            merchant_window_1h = Window.partitionBy("merchant_id") \
+                                      .orderBy(col("timestamp").cast("long")) \
+                                      .rangeBetween(-3600, 0)
+            
+            df_merchant = df_merchant \
+                .withColumn("merchant_unique_users_1h",
+                           approx_count_distinct("user_id").over(merchant_window_1h)) \
+                .withColumn("merchant_avg_amount_1h",
+                           avg("amount").over(merchant_window_1h))
+            
+            # User-merchant interaction history
+            user_merchant_window = Window.partitionBy("user_id", "merchant_id").orderBy("timestamp")
+            
+            df_merchant = df_merchant \
+                .withColumn("user_merchant_txn_count",
+                           count("*").over(user_merchant_window)) \
+                .withColumn("is_new_merchant",
+                           when(col("user_merchant_txn_count") == 1, 1).otherwise(0))
         
         return df_merchant
+    
+    def create_merchant_aggregations_streaming(self, df):
+        """
+        Create merchant aggregations compatible with streaming mode using window() function
+        
+        This method shows how to properly aggregate merchant metrics in streaming mode.
+        For best performance, run this as a separate aggregation stream and join results.
+        
+        Args:
+            df: Streaming DataFrame with watermark already applied
+            
+        Returns:
+            Aggregated DataFrame with merchant metrics per 1-hour window
+            
+        Example:
+            # In your streaming pipeline:
+            df_with_watermark = df.withWatermark("timestamp", "10 minutes")
+            merchant_aggs = feature_eng.create_merchant_aggregations_streaming(df_with_watermark)
+            
+            # Join back to main stream
+            df_enriched = df.join(
+                merchant_aggs,
+                on=["merchant_id", "window"],
+                how="left"
+            )
+        """
+        logger.info("Creating streaming-compatible merchant aggregations...")
+        
+        # Use window() function for time-based grouping
+        # This is streaming-compatible and maintains bounded state with watermarks
+        merchant_aggs = df \
+            .groupBy(
+                "merchant_id",
+                window("timestamp", "1 hour", "15 minutes")  # 1-hour windows, sliding every 15 min
+            ) \
+            .agg(
+                approx_count_distinct("user_id").alias("merchant_unique_users_1h"),
+                avg("amount").alias("merchant_avg_amount_1h"),
+                count("*").alias("merchant_txn_count_1h"),
+                stddev("amount").alias("merchant_amount_std_1h")
+            )
+        
+        return merchant_aggs
     
     def create_device_features(self, df):
         """
