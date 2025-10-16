@@ -299,11 +299,11 @@ class AdvancedFeatureEngineering:
                        .otherwise(0))
         
         # Velocity (distance/time)
-        df_location = df_location \
-            .withColumn("location_velocity",
-                       when((col("time_since_last_txn") > 0) & (col("distance_from_prev") > 0),
-                            col("distance_from_prev") / (col("time_since_last_txn") / 3600))
-                       .otherwise(0))
+        # df_location = df_location \
+        #     .withColumn("location_velocity",
+        #                when((col("time_since_last_txn") > 0) & (col("distance_from_prev") > 0),
+        #                     col("distance_from_prev") / (col("time_since_last_txn") / 3600))
+        #                .otherwise(0))
         
         # Location risk zones (simplified)
         df_location = df_location \
@@ -366,7 +366,7 @@ class AdvancedFeatureEngineering:
                                   .orderBy(col("timestamp").cast("long")) \
                                   .rangeBetween(-3600, 0)
         
-        df_merchant = df_merchant \
+        # df_merchant = df_merchant \
             .withColumn("merchant_unique_users_1h",
                        approx_count_distinct("user_id").over(merchant_window_1h)) \
             .withColumn("merchant_avg_amount_1h",
@@ -375,7 +375,7 @@ class AdvancedFeatureEngineering:
         # User-merchant interaction history
         user_merchant_window = Window.partitionBy("user_id", "merchant_id").orderBy("timestamp")
         
-        df_merchant = df_merchant \
+        # df_merchant = df_merchant \
             .withColumn("user_merchant_txn_count",
                        count("*").over(user_merchant_window)) \
             .withColumn("is_new_merchant",
@@ -496,11 +496,11 @@ class AdvancedFeatureEngineering:
                        expr("percentile_approx(amount, 0.95)").over(user_window_24h))
         
         # Z-score for current transaction
-        df_stats = df_stats \
-            .withColumn("amount_zscore_24h",
-                       when(col("user_amount_std_24h") > 0,
-                            (col("amount") - col("user_amount_avg_24h")) / col("user_amount_std_24h"))
-                       .otherwise(0))
+        # df_stats = df_stats \
+        #     .withColumn("amount_zscore_24h",
+        #                when(col("user_amount_std_24h") > 0,
+        #                     (col("amount") - col("user_amount_avg_24h")) / col("user_amount_std_24h"))
+        #                .otherwise(0))
         
         return df_stats
     
@@ -522,18 +522,25 @@ class AdvancedFeatureEngineering:
         logger.info("Applying comprehensive feature engineering...")
         
         # Core features (always applied)
-        df_features = self.create_time_based_features(df)
-        df_features = self.create_amount_features(df_features)
-        df_features = self.create_velocity_features(df_features)
-        df_features = self.create_behavioral_features(df_features)
+        #df_features = self.create_time_based_features(df)
+        df_features = self.create_amount_features(df)
+        #df_features = self.create_velocity_features(df_features)
+        #df_features = self.create_behavioral_features(df_features)
         df_features = self.create_merchant_features(df_features)
+        print("************* DONE ADDING FEATURES")
         
         # Optional features (only if data is available)
-        if include_optional:
-            df_features = self.create_location_features(df_features)
-            df_features = self.create_device_features(df_features)
-            df_features = self.create_network_features(df_features)
-            df_features = self.create_statistical_features(df_features)
+        if include_optional:            
+            x = 1
+            #df_features = self.create_location_features(df_features)
+            #df_features = self.create_device_features(df_features)
+            #df_features = self.create_network_features(df_features)
+            #df_features = self.create_statistical_features(df_features)
+
+            #df_features = self.create_location_features(df_features)
+            #df_features = self.create_device_features(df_features)
+            #df_features = self.create_network_features(df_features)
+            #df_features = self.create_statistical_features(df_features)
         
         logger.info("Feature engineering completed successfully!")
         return df_features
@@ -569,98 +576,7 @@ class AdvancedFeatureEngineering:
             .trigger(processingTime=trigger_interval) \
             .start()
     
-    def get_feature_columns(self):
-        """
-        Get list of all engineered feature columns for model training
-        
-        Returns:
-            List of feature column names
-        """
-        return [
-            # Time features
-            "hour", "day_of_week", "is_business_hour", "is_weekend", 
-            "is_holiday", "is_night", "is_early_morning",
-            "hour_sin", "hour_cos", "day_of_week_sin", "day_of_week_cos",
-            
-            # Amount features
-            "amount_log", "amount_sqrt", "is_round_amount", "amount_zscore",
-            
-            # Velocity features
-            "user_txn_count_5m", "user_txn_count_1h", "user_txn_count_24h",
-            "user_amount_sum_1h", "user_amount_avg_1h", "user_amount_std_1h",
-            "merchant_txn_count_1h", "device_txn_count_1h", "ip_txn_count_1h",
-            
-            # Behavioral features
-            "time_since_last_txn", "merchant_change", "payment_method_change",
-            "unique_merchants_1h", "unique_payment_methods_1h",
-            
-            # Location features
-            "distance_from_prev", "location_velocity", "is_high_risk_location",
-            "location_consistency_score",
-            
-            # Merchant features
-            "merchant_risk_score", "merchant_unique_users_1h", "is_new_merchant",
-            
-            # Device features
-            "device_unique_users_1h", "is_new_device", "device_sharing_risk",
-            
-            # Network features
-            "ip_unique_users_1h", "is_new_ip", "ip_sharing_risk",
-            
-            # Statistical features
-            "amount_zscore_24h"
-        ]
-
-
-def main():
-    """Example usage of the feature engineering module"""
     
-    spark = SparkSession.builder \
-        .appName("FeatureEngineeringExample") \
-        .getOrCreate()
-    
-    # Initialize feature engineering
-    feature_eng = AdvancedFeatureEngineering(spark)
-    
-    # Example: Load sample data and apply feature engineering
-    # This would typically come from your streaming source
-    sample_data = [
-        ("txn_001", "user_001", "merchant_001", 150.0, "USD", 
-         "2025-10-03 14:30:00", "restaurant", "credit_card", 
-         "192.168.1.1", "device_001", 37.7749, -122.4194),
-        ("txn_002", "user_001", "merchant_002", 25.0, "USD",
-         "2025-10-03 15:45:00", "gas_station", "credit_card",
-         "192.168.1.1", "device_001", 37.7849, -122.4094)
-    ]
-    
-    schema = StructType([
-        StructField("transaction_id", StringType(), False),
-        StructField("user_id", StringType(), False),
-        StructField("merchant_id", StringType(), False),
-        StructField("amount", DoubleType(), False),
-        StructField("currency", StringType(), False),
-        StructField("timestamp", StringType(), False),
-        StructField("merchant_category", StringType(), True),
-        StructField("payment_method", StringType(), True),
-        StructField("ip_address", StringType(), True),
-        StructField("device_id", StringType(), True),
-        StructField("location_lat", DoubleType(), True),
-        StructField("location_lon", DoubleType(), True)
-    ])
-    
-    df = spark.createDataFrame(sample_data, schema)
-    df = df.withColumn("timestamp", to_timestamp("timestamp"))
-    
-    # Apply feature engineering
-    df_features = feature_eng.apply_all_features(df)
-    
-    # Show results
-    df_features.show(truncate=False)
-    
-    # Get feature columns for model training
-    feature_cols = feature_eng.get_feature_columns()
-    print(f"Generated {len(feature_cols)} features: {feature_cols}")
-
 
 if __name__ == "__main__":
     main()

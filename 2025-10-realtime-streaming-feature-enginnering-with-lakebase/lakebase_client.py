@@ -19,6 +19,11 @@ import logging
 from typing import Dict, List, Optional
 import pandas as pd
 from contextlib import contextmanager
+import databricks.sdk
+from databricks.sdk import WorkspaceClient
+import uuid
+
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,27 +34,18 @@ class LakebaseClient:
     Client for Databricks Lakebase (PostgreSQL OLTP database)
     """
     
-    def __init__(self, host: str, port: int = 5432, database: str = "feature_store",
-                 user: str = "token", password: Optional[str] = None):
+    def __init__(self, instance_name, database: str = "databricks_postgres"):
         """
         Initialize Lakebase client
         
         Args:
-            host: Lakebase hostname (e.g., workspace.cloud.databricks.com)
-            port: PostgreSQL port (default: 5432)
-            database: Database name
-            user: Username (use 'token' for OAuth)
-            password: OAuth token or password
+            instance_name: Lakebase instance name
+            database: Database name. databricks_postgres is the default database.            
         """
-        self.host = host
-        self.port = port
+        self.instance_name = instance_name
         self.database = database
-        self.user = user
-        self.password = password
-        self._connection = None
         
-        logger.info(f"Initialized LakebaseClient for {host}:{port}/{database}")
-    
+
     @contextmanager
     def get_connection(self):
         """
@@ -60,12 +56,21 @@ class LakebaseClient:
         """
         conn = None
         try:
+            w = WorkspaceClient()
+            print(databricks.sdk.version.__version__)
+            host = w.database.get_database_instance(name=self.instance_name).read_write_dns
+            port = 5432
+            cred = w.database.generate_database_credential(
+                request_id=str(uuid.uuid4()), instance_names=[self.instance_name])            
+            user = w.current_user.me().user_name
+            password = cred.token
+            
             conn = psycopg2.connect(
-                host=self.host,
-                port=self.port,
+                host=host,
+                port=port,
                 dbname=self.database,
-                user=self.user,
-                password=self.password,
+                user=user,
+                password=password,
                 connect_timeout=10,
                 sslmode='require'
             )
@@ -352,12 +357,8 @@ def get_lakebase_client_from_secrets(spark=None) -> LakebaseClient:
 # Example usage
 if __name__ == "__main__":
     # Example configuration
-    client = LakebaseClient(
-        host="your-workspace.cloud.databricks.com",
-        port=5432,
-        database="feature_store",
-        user="token",
-        password="your-oauth-token"
+    client = LakebaseClient(instance_name="neha-lakebase-demo",
+        database="databricks_postgres"
     )
     
     # Test connection
