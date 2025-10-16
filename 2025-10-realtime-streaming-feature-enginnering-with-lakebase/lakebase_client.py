@@ -130,57 +130,22 @@ class LakebaseClient:
             location_lon DOUBLE PRECISION,
             card_type VARCHAR(20),
             
-            -- Time-based features (create_time_based_features)
-            year INTEGER,
-            month INTEGER,
-            day INTEGER,
+            -- Time-based features
             hour INTEGER,
-            minute INTEGER,
             day_of_week INTEGER,
-            day_of_year INTEGER,
-            week_of_year INTEGER,
             is_business_hour INTEGER,
             is_weekend INTEGER,
-            is_holiday INTEGER,
-            is_night INTEGER,
-            is_early_morning INTEGER,
             hour_sin DOUBLE PRECISION,
             hour_cos DOUBLE PRECISION,
-            day_of_week_sin DOUBLE PRECISION,
-            day_of_week_cos DOUBLE PRECISION,
-            month_sin DOUBLE PRECISION,
-            month_cos DOUBLE PRECISION,
             
-            -- Amount-based features (create_amount_features)
+            -- Amount-based features
             amount_log DOUBLE PRECISION,
             amount_sqrt DOUBLE PRECISION,
-            amount_squared DOUBLE PRECISION,
-            amount_category VARCHAR(20),
-            is_round_amount INTEGER,
-            is_exact_amount INTEGER,
-            amount_zscore DOUBLE PRECISION,
             
-            -- Behavioral features (create_behavioral_features)
-            is_high_value_txn INTEGER,
-            merchant_category_freq VARCHAR(20),
-            
-            -- Merchant features (create_merchant_features)
-            merchant_risk_score DOUBLE PRECISION,
-            merchant_category_risk VARCHAR(20),
-            
-            -- Location features (create_location_features)
-            is_high_risk_location INTEGER,
-            is_international INTEGER,
-            location_region VARCHAR(20),
-            
-            -- Device features (create_device_features)
-            has_device_id INTEGER,
-            device_type VARCHAR(20),
-            
-            -- Network features (create_network_features)
-            is_tor_ip INTEGER,
-            is_private_ip INTEGER,
-            ip_class VARCHAR(20),
+            -- Velocity features
+            user_txn_count_1h INTEGER,
+            user_amount_sum_1h DOUBLE PRECISION,
+            merchant_txn_count_1h INTEGER,
             
             -- Processing metadata
             processing_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -190,8 +155,6 @@ class LakebaseClient:
         CREATE INDEX IF NOT EXISTS idx_{table_name}_timestamp ON {table_name}(timestamp);
         CREATE INDEX IF NOT EXISTS idx_{table_name}_user_id ON {table_name}(user_id);
         CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_id ON {table_name}(merchant_id);
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_category ON {table_name}(merchant_category);
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_device_id ON {table_name}(device_id);
         """
         
         try:
