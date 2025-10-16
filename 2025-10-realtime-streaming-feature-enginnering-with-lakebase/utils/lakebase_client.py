@@ -130,22 +130,53 @@ class LakebaseClient:
             location_lon DOUBLE PRECISION,
             card_type VARCHAR(20),
             
-            -- Time-based features
+            -- Time-based features (create_time_based_features)
+            year INTEGER,
+            month INTEGER,
+            day INTEGER,
             hour INTEGER,
+            minute INTEGER,
             day_of_week INTEGER,
+            day_of_year INTEGER,
+            week_of_year INTEGER,
             is_business_hour INTEGER,
             is_weekend INTEGER,
+            is_holiday INTEGER,
+            is_night INTEGER,
+            is_early_morning INTEGER,
             hour_sin DOUBLE PRECISION,
             hour_cos DOUBLE PRECISION,
+            day_of_week_sin DOUBLE PRECISION,
+            day_of_week_cos DOUBLE PRECISION,
+            month_sin DOUBLE PRECISION,
+            month_cos DOUBLE PRECISION,
             
-            -- Amount-based features
+            -- Amount-based features (create_amount_features)
             amount_log DOUBLE PRECISION,
             amount_sqrt DOUBLE PRECISION,
+            amount_squared DOUBLE PRECISION,
+            amount_category VARCHAR(20),
+            is_round_amount INTEGER,
+            is_exact_amount INTEGER,
+            amount_zscore DOUBLE PRECISION,
             
-            -- Velocity features
-            user_txn_count_1h INTEGER,
-            user_amount_sum_1h DOUBLE PRECISION,
-            merchant_txn_count_1h INTEGER,
+            -- Merchant features (create_merchant_features)
+            merchant_risk_score DOUBLE PRECISION,
+            merchant_category_risk VARCHAR(20),
+            
+            -- Location features (create_location_features - optional)
+            is_high_risk_location INTEGER,
+            is_international INTEGER,
+            location_region VARCHAR(20),
+            
+            -- Device features (create_device_features - optional)
+            has_device_id INTEGER,
+            device_type VARCHAR(20),
+            
+            -- Network features (create_network_features - optional)
+            is_tor_ip INTEGER,
+            is_private_ip INTEGER,
+            ip_class VARCHAR(20),
             
             -- Processing metadata
             processing_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -155,6 +186,8 @@ class LakebaseClient:
         CREATE INDEX IF NOT EXISTS idx_{table_name}_timestamp ON {table_name}(timestamp);
         CREATE INDEX IF NOT EXISTS idx_{table_name}_user_id ON {table_name}(user_id);
         CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_id ON {table_name}(merchant_id);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_category ON {table_name}(merchant_category);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_device_id ON {table_name}(device_id);
         """
         
         try:
@@ -167,44 +200,8 @@ class LakebaseClient:
             logger.error(f"Error creating table: {e}")
             raise
     
-    def write_batch(self, df: pd.DataFrame, table_name: str = "transaction_features",
-                   batch_size: int = 1000):
-        """
-        Write a pandas DataFrame to Lakebase in batches
-        
-        Args:
-            df: Pandas DataFrame with features
-            table_name: Target table name
-            batch_size: Number of rows per batch
-        """
-        if df.empty:
-            logger.warning("Empty DataFrame, skipping write")
-            return
-        
-        # Prepare column names and placeholders
-        columns = list(df.columns)
-        placeholders = ','.join(['%s'] * len(columns))
-        insert_sql = f"""
-            INSERT INTO {table_name} ({','.join(columns)})
-            VALUES ({placeholders})
-            ON CONFLICT (transaction_id) DO UPDATE SET
-            {','.join([f"{col}=EXCLUDED.{col}" for col in columns if col != 'transaction_id'])}
-        """
-        
-        # Convert DataFrame to list of tuples
-        data = [tuple(row) for row in df.values]
-        
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                execute_batch(cursor, insert_sql, data, page_size=batch_size)
-                cursor.close()
-                logger.info(f"Wrote {len(df)} rows to {table_name}")
-        except Exception as e:
-            logger.error(f"Error writing batch: {e}")
-            raise
-    
-    def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features"):
+    def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features", 
+                             batch_size: int = 1000):
         """
         Write a streaming micro-batch to Lakebase
         
@@ -214,6 +211,7 @@ class LakebaseClient:
             batch_df: PySpark DataFrame (micro-batch)
             batch_id: Batch ID from streaming query
             table_name: Target table name
+            batch_size: Number of rows per batch for insert
         """
         if batch_df.isEmpty():
             logger.info(f"Batch {batch_id}: Empty, skipping")
@@ -221,13 +219,32 @@ class LakebaseClient:
         
         logger.info(f"Processing batch {batch_id}...")
         
-        # Convert to Pandas
         pandas_df = batch_df.toPandas()
         
-        # Write to Lakebase
-        self.write_batch(pandas_df, table_name)
+        if pandas_df.empty:
+            logger.warning(f"Batch {batch_id}: Empty DataFrame, skipping")
+            return
         
-        logger.info(f"Batch {batch_id} complete: {len(pandas_df)} rows written")
+        columns = list(pandas_df.columns)
+        placeholders = ','.join(['%s'] * len(columns))
+        insert_sql = f"""
+            INSERT INTO {table_name} ({','.join(columns)})
+            VALUES ({placeholders})
+            ON CONFLICT (transaction_id) DO UPDATE SET
+            {','.join([f"{col}=EXCLUDED.{col}" for col in columns if col != 'transaction_id'])}
+        """
+        
+        data = [tuple(row) for row in pandas_df.values]
+        
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                execute_batch(cursor, insert_sql, data, page_size=batch_size)
+                cursor.close()
+                logger.info(f"Batch {batch_id} complete: {len(pandas_df)} rows written")
+        except Exception as e:
+            logger.error(f"Error writing batch {batch_id}: {e}")
+            raise
     
     def read_features(self, query: str) -> pd.DataFrame:
         """
