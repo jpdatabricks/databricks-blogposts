@@ -34,7 +34,8 @@ class LakebaseClient:
     Client for Databricks Lakebase (PostgreSQL OLTP database)
     """
     
-    def __init__(self, instance_name, database: str = "databricks_postgres"):
+    def __init__(self, instance_name, 
+                 database: str = "databricks_postgres"):
         """
         Initialize Lakebase client
         
@@ -45,14 +46,12 @@ class LakebaseClient:
         self.instance_name = instance_name
         self.database = database
         
-
-    @contextmanager
-    def get_connection(self):
+    def get_credentials(self):
         """
-        Context manager for database connections
+        Get Databricks Lakebase credentials
         
         Yields:
-            psycopg2 connection object
+            lakebase database credentials
         """
         conn = None
         try:
@@ -64,13 +63,36 @@ class LakebaseClient:
                 request_id=str(uuid.uuid4()), instance_names=[self.instance_name])            
             user = w.current_user.me().user_name
             password = cred.token
+            return {
+                "host": host,
+                "port": port,
+                "user": user,
+                "password": password
+            }
+        except Exception as e:
+            logger.error(f"Unable to get Lakebase credentials: {e}") 
+            raise
+
+
+
+    @contextmanager
+    def get_connection(self):
+        """
+        Context manager for database connections
+        
+        Yields:
+            psycopg2 connection object
+        """
+        conn = None
+        try:
+            creds = self.get_credentials()
             
             conn = psycopg2.connect(
-                host=host,
-                port=port,
+                host=creds['host'],
+                port=creds['port'],
                 dbname=self.database,
-                user=user,
-                password=password,
+                user=creds['user'],
+                password=creds['password'],
                 connect_timeout=10,
                 sslmode='require'
             )
@@ -201,7 +223,7 @@ class LakebaseClient:
             raise
     
     def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features", 
-                             batch_size: int = 1000):
+                             batch_size: int = 100):
         """
         Write a streaming micro-batch to Lakebase
         
@@ -245,6 +267,7 @@ class LakebaseClient:
         except Exception as e:
             logger.error(f"Error writing batch {batch_id}: {e}")
             raise
+    
     
     def read_features(self, query: str) -> pd.DataFrame:
         """
