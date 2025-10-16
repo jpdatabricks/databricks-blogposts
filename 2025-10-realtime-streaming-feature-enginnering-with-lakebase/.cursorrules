@@ -1,0 +1,156 @@
+# Project Context Rules
+
+## PRIMARY RULE: Lakebase Definition
+
+**CRITICAL: In this project, "Lakebase" ALWAYS refers to:**
+- **Databricks Lakebase PostgreSQL** (OLTP database)
+- Port: 5432
+- Connection: psycopg2, JDBC, SQLAlchemy
+- Query latency: <10ms
+- Use case: Real-time feature serving
+
+**Lakebase does NOT refer to:**
+- ❌ Delta Lake
+- ❌ File-based storage
+- ❌ Databricks Feature Store API
+- ❌ Any path like `/mnt/lakebase/*`
+
+## Code Patterns
+
+### When writing Lakebase connection code:
+```python
+from lakebase_client import LakebaseClient
+
+lakebase = LakebaseClient(
+    host="workspace.cloud.databricks.com",
+    port=5432,  # PostgreSQL port
+    database="feature_store",
+    user="token",
+    password=oauth_token
+)
+```
+
+### When writing features to Lakebase:
+```python
+# Use foreachBatch for streaming writes to PostgreSQL
+query = feature_engineer.write_features_to_lakebase(
+    df=df_with_features,
+    lakebase_client=lakebase,  # PostgreSQL client
+    table_name="transaction_features"
+)
+```
+
+### When querying features from Lakebase:
+```python
+# Direct SQL queries to PostgreSQL
+features = lakebase.read_features("""
+    SELECT * FROM transaction_features
+    WHERE user_id = 'user_123'
+""")
+```
+
+## Architecture
+
+```
+Streaming Data 
+    ↓
+Feature Engineering (PySpark)
+    ↓
+foreachBatch write
+    ↓
+Lakebase PostgreSQL (port 5432)
+    ↓
+SQL queries (<10ms latency)
+    ↓
+Real-time ML Model Serving
+```
+
+## File Conventions
+
+- `lakebase_*.py` - PostgreSQL-related modules
+- `*_lakebase_*.ipynb` - Lakebase demo notebooks
+- `LAKEBASE_*.md` - Lakebase documentation
+
+## What to NEVER suggest:
+
+1. ❌ Delta Lake writes for final feature storage
+2. ❌ `FeatureStoreClient()` API
+3. ❌ `.format("delta")` for Lakebase writes
+4. ❌ File paths for feature serving
+5. ❌ Referring to Delta Lake as "Lakebase"
+
+## What to ALWAYS suggest:
+
+1. ✅ `LakebaseClient` for connections
+2. ✅ psycopg2 for database operations
+3. ✅ `foreachBatch` for streaming writes
+4. ✅ SQL queries for feature retrieval
+5. ✅ Port 5432 for connections
+
+## Technology Stack
+
+- **Streaming:** PySpark Structured Streaming
+- **Feature Storage:** Lakebase PostgreSQL (NOT Delta Lake)
+- **Connection:** psycopg2-binary
+- **Query Language:** PostgreSQL SQL
+- **Runtime:** Databricks Runtime 13.0+ ML
+
+## Performance Expectations
+
+- Write latency: 50-100ms
+- Query latency: <10ms
+- Concurrency: High
+- Transaction support: ACID
+
+## Documentation References
+
+When discussing this project, always reference:
+1. `.cursorrules` (this file) - Terminology and conventions
+2. `lakebase_client.py` - Implementation reference
+3. `00_setup_and_configuration.ipynb` - Setup instructions
+4. `README.md` - Project overview and quick start
+
+## Common Mistakes to Avoid
+
+1. Confusing Lakebase PostgreSQL with Delta Lake
+2. Using Delta Lake APIs when Lakebase is meant
+3. Suggesting file-based storage for real-time serving
+4. Recommending Feature Store API instead of direct PostgreSQL
+
+## When User Says "Lakebase"
+
+Always interpret as:
+- **Lakebase PostgreSQL** (OLTP database at port 5432)
+- Real-time transactional database
+- NOT a data lake or file storage
+
+## Code Review Checklist
+
+When reviewing code in this project, verify:
+- [ ] "Lakebase" refers to PostgreSQL, not Delta Lake
+- [ ] Connections use port 5432
+- [ ] Writes use `foreachBatch` or `write_batch`
+- [ ] Queries are SQL-based (not Spark DataFrame reads)
+- [ ] Documentation mentions PostgreSQL explicitly
+
+## Example Conversation Flow
+
+**User:** "Write features to Lakebase"
+**Correct Response:** Write features to Lakebase PostgreSQL using `lakebase_client.write_streaming_batch()`
+
+**User:** "Query features from Lakebase"
+**Correct Response:** Query features from Lakebase PostgreSQL using SQL: `lakebase.read_features("SELECT ...")`
+
+**User:** "Setup Lakebase"
+**Correct Response:** Provision Lakebase PostgreSQL instance in Databricks (Compute → OLTP Database)
+
+## Version Control
+
+This context rule is the source of truth for:
+- Project terminology
+- Architecture decisions
+- Technology choices
+- Code patterns
+
+Last updated: October 2025
+
