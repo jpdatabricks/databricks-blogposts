@@ -238,56 +238,42 @@ class AdvancedFeatureEngineering:
     
     def create_location_features(self, df):
         """
-        Create location-based features
+        Create location-based features (streaming-compatible)
+        
+        NOTE: This creates stateless location indicators only.
+        For stateful features like "distance from previous transaction" or
+        "location velocity", use applyInPandasWithState or compute in
+        separate aggregation streams.
         
         Args:
-            df: Input DataFrame with location data
+            df: Streaming DataFrame with location data
             
         Returns:
-            DataFrame with location features
+            DataFrame with stateless location features
         """
         if "location_lat" not in df.columns or "location_lon" not in df.columns:
             logger.warning("Location columns not found, skipping location features")
             return df
             
-        logger.info("Creating location features...")
+        logger.info("Creating location features (streaming-only)...")
         
-        user_window = Window.partitionBy("user_id").orderBy("timestamp")
-        
+        # Stateless location risk zones
         df_location = df \
-            .withColumn("prev_lat", lag("location_lat").over(user_window)) \
-            .withColumn("prev_lon", lag("location_lon").over(user_window))
-        
-        # Calculate distance from previous transaction
-        df_location = df_location \
-            .withColumn("distance_from_prev",
-                       when((col("prev_lat").isNotNull()) & (col("prev_lon").isNotNull()),
-                            self._haversine_distance("location_lat", "location_lon",
-                                                   "prev_lat", "prev_lon"))
-                       .otherwise(0))
-        
-        # Velocity (distance/time)
-        # df_location = df_location \
-        #     .withColumn("location_velocity",
-        #                when((col("time_since_last_txn") > 0) & (col("distance_from_prev") > 0),
-        #                     col("distance_from_prev") / (col("time_since_last_txn") / 3600))
-        #                .otherwise(0))
-        
-        # Location risk zones (simplified)
-        df_location = df_location \
             .withColumn("is_high_risk_location",
                        when((col("location_lat").between(25.0, 49.0)) &
                             (col("location_lon").between(-125.0, -66.0)), 0)  # US mainland
-                       .otherwise(1))  # International or unusual locations
+                       .otherwise(1)) \
+            .withColumn("is_international",
+                       when(~(col("location_lat").between(25.0, 49.0)) |
+                            ~(col("location_lon").between(-125.0, -66.0)), 1)
+                       .otherwise(0)) \
+            .withColumn("location_region",
+                       when(col("location_lat").between(40.0, 49.0), "north")
+                       .when(col("location_lat").between(32.0, 40.0), "central")
+                       .when(col("location_lat").between(25.0, 32.0), "south")
+                       .otherwise("international"))
         
-        # Location consistency
-        df_location = df_location \
-            .withColumn("location_consistency_score",
-                       when(col("distance_from_prev") < 10, 1.0)  # Same city
-                       .when(col("distance_from_prev") < 100, 0.8)  # Same state
-                       .when(col("distance_from_prev") < 1000, 0.5)  # Same country
-                       .otherwise(0.1))  # International
-        
+        logger.info("✅ Location features created (stateless)")
         return df_location
     
     def _haversine_distance(self, lat1, lon1, lat2, lon2):
