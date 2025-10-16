@@ -95,7 +95,7 @@ class TransactionDataGenerator:
                             "else 'discover' end")) \
             .drop("value", "user_id_num", "merchant_id_num")
         
-        logger.info("✅ Streaming source created successfully")
+        logger.info("Streaming source created successfully")
         return streaming_df
 
 
@@ -110,12 +110,12 @@ if __name__ == "__main__":
         rows_per_second=5
     )
     
-    print("✅ Streaming DataFrame created")
+    print("Streaming DataFrame created")
     print(f"   Is streaming: {streaming_df.isStreaming}")
     streaming_df.printSchema()
     
     # Run a short test query
-    print("\n🚀 Running 10-second test query...")
+    print("\nRunning 10-second test query...")
     query = streaming_df.writeStream \
         .format("console") \
         .option("numRows", 3) \
@@ -124,4 +124,4 @@ if __name__ == "__main__":
     time.sleep(10)
     query.stop()
     
-    print("\n✅ Test complete!")
+    print("\nTest complete!")

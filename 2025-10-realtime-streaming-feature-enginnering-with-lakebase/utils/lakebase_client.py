@@ -98,10 +98,10 @@ class LakebaseClient:
                 cursor.execute("SELECT 1")
                 result = cursor.fetchone()
                 cursor.close()
-                logger.info("✅ Lakebase connection test successful")
+                logger.info("Lakebase connection test successful")
                 return result[0] == 1
         except Exception as e:
-            logger.error(f"❌ Lakebase connection test failed: {e}")
+            logger.error(f"Lakebase connection test failed: {e}")
             return False
     
     def create_feature_table(self, table_name: str = "transaction_features"):
@@ -162,7 +162,7 @@ class LakebaseClient:
                 cursor = conn.cursor()
                 cursor.execute(create_table_sql)
                 cursor.close()
-                logger.info(f"✅ Created table: {table_name}")
+                logger.info(f"Created table: {table_name}")
         except Exception as e:
             logger.error(f"Error creating table: {e}")
             raise
@@ -199,7 +199,7 @@ class LakebaseClient:
                 cursor = conn.cursor()
                 execute_batch(cursor, insert_sql, data, page_size=batch_size)
                 cursor.close()
-                logger.info(f"✅ Wrote {len(df)} rows to {table_name}")
+                logger.info(f"Wrote {len(df)} rows to {table_name}")
         except Exception as e:
             logger.error(f"Error writing batch: {e}")
             raise
@@ -227,7 +227,7 @@ class LakebaseClient:
         # Write to Lakebase
         self.write_batch(pandas_df, table_name)
         
-        logger.info(f"✅ Batch {batch_id} complete: {len(pandas_df)} rows written")
+        logger.info(f"Batch {batch_id} complete: {len(pandas_df)} rows written")
     
     def read_features(self, query: str) -> pd.DataFrame:
         """
@@ -242,7 +242,7 @@ class LakebaseClient:
         try:
             with self.get_connection() as conn:
                 df = pd.read_sql(query, conn)
-                logger.info(f"✅ Read {len(df)} rows from Lakebase")
+                logger.info(f"Read {len(df)} rows from Lakebase")
                 return df
         except Exception as e:
             logger.error(f"Error reading features: {e}")
@@ -307,7 +307,7 @@ class LakebaseClient:
                     'avg_amount': result[5]
                 }
                 
-                logger.info(f"📊 Table stats: {stats['total_rows']:,} rows")
+                logger.info(f"Table stats: {stats['total_rows']:,} rows")
                 return stats
         except Exception as e:
             logger.error(f"Error getting table stats: {e}")
@@ -363,7 +363,7 @@ if __name__ == "__main__":
     
     # Test connection
     if client.test_connection():
-        print("✅ Connected to Lakebase!")
+        print("Connected to Lakebase!")
         
         # Create table
         client.create_feature_table()

@@ -1,5 +1,36 @@
 # Project Context Rules
 
+## PRIMARY RULE: No Emojis in Code
+
+**CRITICAL: Do NOT use emojis in code unless explicitly requested by the user.**
+
+### What This Means:
+- ❌ NO emojis in Python code (`.py` files)
+- ❌ NO emojis in notebook cells (`.ipynb`)
+- ❌ NO emojis in log messages, print statements, or comments
+- ❌ NO emojis in function names, variable names, or docstrings
+- ✅ Use plain text messages instead
+
+### Examples:
+
+**BAD:**
+```python
+logger.info("✅ Connection successful")
+print("🚀 Starting process...")
+# ❌ Don't do this
+```
+
+**GOOD:**
+```python
+logger.info("Connection successful")
+print("Starting process...")
+# Don't do this
+```
+
+### Exceptions:
+- Emojis MAY be used in documentation files (README.md, etc.) for visual clarity
+- Emojis MAY be used ONLY if the user explicitly requests them
+
 ## PRIMARY RULE: Lakebase Definition
 
 **CRITICAL: In this project, "Lakebase" ALWAYS refers to:**
