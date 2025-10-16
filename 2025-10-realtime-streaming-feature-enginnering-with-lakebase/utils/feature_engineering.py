@@ -147,130 +147,9 @@ class AdvancedFeatureEngineering:
         
         return df_amount
     
-    def create_velocity_features(self, df, timestamp_col="timestamp"):
-        """
-        Create velocity-based features using time windows
-        
-        Args:
-            df: Input DataFrame with watermark
-            timestamp_col: Name of timestamp column
-            
-        Returns:
-            DataFrame with velocity features
-        """
-        logger.info("Creating velocity features...")
-        
-        # Define time windows (in seconds)
-        windows = {
-            "5m": 300,
-            "15m": 900,
-            "1h": 3600,
-            "6h": 21600,
-            "24h": 86400
-        }
-        
-        df_velocity = df
-        
-        for window_name, window_seconds in windows.items():
-            # User-based velocity features
-            user_window = Window.partitionBy("user_id") \
-                                .orderBy(col(timestamp_col).cast("long")) \
-                                .rangeBetween(-window_seconds, 0)
-            
-            df_velocity = df_velocity \
-                .withColumn(f"user_txn_count_{window_name}",
-                            count("*").over(user_window)) \
-                .withColumn(f"user_amount_sum_{window_name}",
-                            sum("amount").over(user_window)) \
-                .withColumn(f"user_amount_avg_{window_name}",
-                            avg("amount").over(user_window)) \
-                .withColumn(f"user_amount_max_{window_name}",
-                            max("amount").over(user_window)) \
-                .withColumn(f"user_amount_std_{window_name}",
-                            stddev("amount").over(user_window))
-            
-            # Merchant-based velocity features
-            merchant_window = Window.partitionBy("merchant_id") \
-                                    .orderBy(col(timestamp_col).cast("long")) \
-                                    .rangeBetween(-window_seconds, 0)
-            
-            df_velocity = df_velocity \
-                .withColumn(f"merchant_txn_count_{window_name}",
-                            count("*").over(merchant_window)) \
-                .withColumn(f"merchant_amount_sum_{window_name}",
-                            sum("amount").over(merchant_window))
-            
-            # Device-based velocity features
-            if "device_id" in df.columns:
-                device_window = Window.partitionBy("device_id") \
-                                      .orderBy(col(timestamp_col).cast("long")) \
-                                      .rangeBetween(-window_seconds, 0)
-                
-                df_velocity = df_velocity \
-                    .withColumn(f"device_txn_count_{window_name}",
-                                count("*").over(device_window))
-            
-            # IP-based velocity features
-            if "ip_address" in df.columns:
-                ip_window = Window.partitionBy("ip_address") \
-                                  .orderBy(col(timestamp_col).cast("long")) \
-                                  .rangeBetween(-window_seconds, 0)
-                
-                df_velocity = df_velocity \
-                    .withColumn(f"ip_txn_count_{window_name}",
-                                count("*").over(ip_window))
-        
-        return df_velocity
-    
-    def create_behavioral_features(self, df, timestamp_col="timestamp"):
-        """
-        Create behavioral pattern features
-        
-        Args:
-            df: Input DataFrame
-            timestamp_col: Name of timestamp column
-            
-        Returns:
-            DataFrame with behavioral features
-        """
-        logger.info("Creating behavioral features...")
-        
-        # User behavior patterns
-        user_window = Window.partitionBy("user_id").orderBy(timestamp_col)
-        
-        df_behavior = df \
-            .withColumn("time_since_last_txn",
-                        col(timestamp_col).cast("long") - 
-                        lag(col(timestamp_col).cast("long")).over(user_window)) \
-            .withColumn("amount_vs_prev",
-                        col("amount") - lag("amount").over(user_window)) \
-            .withColumn("merchant_change",
-                        when(col("merchant_id") != lag("merchant_id").over(user_window), 1)
-                        .otherwise(0)) \
-            .withColumn("payment_method_change",
-                        when(col("payment_method") != lag("payment_method").over(user_window), 1)
-                        .otherwise(0))
-        
-        # Merchant switching patterns
-        df_behavior = df_behavior \
-            .withColumn("unique_merchants_1h",
-                        approx_count_distinct("merchant_id").over(
-                            Window.partitionBy("user_id")
-                            .orderBy(col(timestamp_col).cast("long"))
-                            .rangeBetween(-3600, 0)
-                        )) \
-            .withColumn("unique_payment_methods_1h",
-                        approx_count_distinct("payment_method").over(
-                            Window.partitionBy("user_id")
-                            .orderBy(col(timestamp_col).cast("long"))
-                            .rangeBetween(-3600, 0)
-                        ))
-        
-        return df_behavior
-    
     def create_location_features(self, df):
         """
-        Create location-based features
+        Create location-based features (streaming-compatible, stateless only)
         
         Args:
             df: Input DataFrame with location data
@@ -282,57 +161,28 @@ class AdvancedFeatureEngineering:
             logger.warning("Location columns not found, skipping location features")
             return df
             
-        logger.info("Creating location features...")
-        
-        user_window = Window.partitionBy("user_id").orderBy("timestamp")
+        logger.info("Creating location features (streaming-only)...")
         
         df_location = df \
-            .withColumn("prev_lat", lag("location_lat").over(user_window)) \
-            .withColumn("prev_lon", lag("location_lon").over(user_window))
-        
-        # Calculate distance from previous transaction
-        df_location = df_location \
-            .withColumn("distance_from_prev",
-                        when((col("prev_lat").isNotNull()) & (col("prev_lon").isNotNull()),
-                             self._haversine_distance("location_lat", "location_lon",
-                                                      "prev_lat", "prev_lon"))
-                        .otherwise(0))
-        
-        # Velocity (distance/time)
-        # df_location = df_location \
-        #     .withColumn("location_velocity",
-        #                when((col("time_since_last_txn") > 0) & (col("distance_from_prev") > 0),
-        #                     col("distance_from_prev") / (col("time_since_last_txn") / 3600))
-        #                .otherwise(0))
-        
-        # Location risk zones (simplified)
-        df_location = df_location \
             .withColumn("is_high_risk_location",
                         when((col("location_lat").between(25.0, 49.0)) &
-                             (col("location_lon").between(-125.0, -66.0)), 0)  # US mainland
-                        .otherwise(1))  # International or unusual locations
-        
-        # Location consistency
-        df_location = df_location \
-            .withColumn("location_consistency_score",
-                        when(col("distance_from_prev") < 10, 1.0)  # Same city
-                        .when(col("distance_from_prev") < 100, 0.8)  # Same state
-                        .when(col("distance_from_prev") < 1000, 0.5)  # Same country
-                        .otherwise(0.1))  # International
+                             (col("location_lon").between(-125.0, -66.0)), 0)
+                        .otherwise(1)) \
+            .withColumn("is_international",
+                        when(~(col("location_lat").between(25.0, 49.0)) |
+                             ~(col("location_lon").between(-125.0, -66.0)), 1)
+                        .otherwise(0)) \
+            .withColumn("location_region",
+                        when(col("location_lat").between(40.0, 49.0), "north")
+                        .when(col("location_lat").between(32.0, 40.0), "central")
+                        .when(col("location_lat").between(25.0, 32.0), "south")
+                        .otherwise("international"))
         
         return df_location
     
-    def _haversine_distance(self, lat1, lon1, lat2, lon2):
-        """Calculate Haversine distance between two points"""
-        return acos(
-            sin(radians(col(lat1))) * sin(radians(col(lat2))) +
-            cos(radians(col(lat1))) * cos(radians(col(lat2))) *
-            cos(radians(col(lon1)) - radians(col(lon2)))
-        ) * 6371  # Earth's radius in km
-    
     def create_merchant_features(self, df):
         """
-        Create merchant-based features
+        Create merchant-based features (streaming-compatible, stateless only)
         
         Args:
             df: Input DataFrame
@@ -340,9 +190,8 @@ class AdvancedFeatureEngineering:
         Returns:
             DataFrame with merchant features
         """
-        logger.info("Creating merchant features...")
+        logger.info("Creating merchant features (streaming-only)...")
         
-        # Merchant risk scores (would be computed from historical data)
         merchant_risk_map = {
             "gas_station": 0.1,
             "restaurant": 0.05,
@@ -354,38 +203,22 @@ class AdvancedFeatureEngineering:
             "unknown": 0.5
         }
         
-        # Create merchant risk score
-        risk_expr = lit(0.5)  # default
+        risk_expr = lit(0.5)
         for category, risk in merchant_risk_map.items():
             risk_expr = when(col("merchant_category") == category, lit(risk)).otherwise(risk_expr)
         
-        df_merchant = df.withColumn("merchant_risk_score", risk_expr)
-        
-        # Merchant transaction patterns
-        merchant_window_1h = Window.partitionBy("merchant_id") \
-                                   .orderBy(col("timestamp").cast("long")) \
-                                   .rangeBetween(-3600, 0)
-        
-        # df_merchant = df_merchant \
-        #     .withColumn("merchant_unique_users_1h",
-        #                approx_count_distinct("user_id").over(merchant_window_1h)) \
-        #     .withColumn("merchant_avg_amount_1h",
-        #                avg("amount").over(merchant_window_1h))
-        
-        # User-merchant interaction history
-        user_merchant_window = Window.partitionBy("user_id", "merchant_id").orderBy("timestamp")
-        
-        # df_merchant = df_merchant \
-        #     .withColumn("user_merchant_txn_count",
-        #                count("*").over(user_merchant_window)) \
-        #     .withColumn("is_new_merchant",
-        #                when(col("user_merchant_txn_count") == 1, 1).otherwise(0))
+        df_merchant = df \
+            .withColumn("merchant_risk_score", risk_expr) \
+            .withColumn("merchant_category_risk",
+                       when(col("merchant_category").isin(["casino", "adult_entertainment"]), "high")
+                       .when(col("merchant_category").isin(["online_retail", "atm"]), "medium")
+                       .otherwise("low"))
         
         return df_merchant
     
     def create_device_features(self, df):
         """
-        Create device and digital fingerprinting features
+        Create device features (streaming-compatible, stateless only)
         
         Args:
             df: Input DataFrame
@@ -397,38 +230,21 @@ class AdvancedFeatureEngineering:
             logger.warning("Device ID column not found, skipping device features")
             return df
             
-        logger.info("Creating device features...")
-        
-        # Device usage patterns
-        device_window_1h = Window.partitionBy("device_id") \
-                                 .orderBy(col("timestamp").cast("long")) \
-                                 .rangeBetween(-3600, 0)
+        logger.info("Creating device features (streaming-only)...")
         
         df_device = df \
-            .withColumn("device_unique_users_1h",
-                        approx_count_distinct("user_id").over(device_window_1h)) \
-            .withColumn("device_unique_merchants_1h",
-                        approx_count_distinct("merchant_id").over(device_window_1h))
-        
-        # User-device relationship
-        user_device_window = Window.partitionBy("user_id", "device_id").orderBy("timestamp")
-        
-        df_device = df_device \
-            .withColumn("user_device_txn_count",
-                        count("*").over(user_device_window)) \
-            .withColumn("is_new_device",
-                        when(col("user_device_txn_count") == 1, 1).otherwise(0))
-        
-        # Device sharing indicators
-        df_device = df_device \
-            .withColumn("device_sharing_risk",
-                        when(col("device_unique_users_1h") > 3, 1).otherwise(0))
+            .withColumn("has_device_id",
+                       when(col("device_id").isNotNull(), 1).otherwise(0)) \
+            .withColumn("device_type",
+                       when(col("device_id").startswith("device_0"), "mobile")
+                       .when(col("device_id").startswith("device_1"), "tablet")
+                       .otherwise("desktop"))
         
         return df_device
     
     def create_network_features(self, df):
         """
-        Create network and IP-based features
+        Create network features (streaming-compatible, stateless only)
         
         Args:
             df: Input DataFrame
@@ -440,109 +256,49 @@ class AdvancedFeatureEngineering:
             logger.warning("IP address column not found, skipping network features")
             return df
             
-        logger.info("Creating network features...")
-        
-        # IP usage patterns
-        ip_window_1h = Window.partitionBy("ip_address") \
-                             .orderBy(col("timestamp").cast("long")) \
-                             .rangeBetween(-3600, 0)
+        logger.info("Creating network features (streaming-only)...")
         
         df_network = df \
-            .withColumn("ip_unique_users_1h",
-                        approx_count_distinct("user_id").over(ip_window_1h)) \
-            .withColumn("ip_unique_devices_1h",
-                        approx_count_distinct("device_id").over(ip_window_1h))
-        
-        # IP risk indicators
-        df_network = df_network \
-            .withColumn("ip_sharing_risk",
-                        when(col("ip_unique_users_1h") > 5, 1).otherwise(0)) \
-            .withColumn("is_tor_ip", lit(0))  # Would implement actual Tor detection
-        
-        # User-IP relationship
-        user_ip_window = Window.partitionBy("user_id", "ip_address").orderBy("timestamp")
-        
-        df_network = df_network \
-            .withColumn("user_ip_txn_count",
-                        count("*").over(user_ip_window)) \
-            .withColumn("is_new_ip",
-                        when(col("user_ip_txn_count") == 1, 1).otherwise(0))
+            .withColumn("is_tor_ip", lit(0)) \
+            .withColumn("is_private_ip",
+                       when(col("ip_address").startswith("10.") |
+                            col("ip_address").startswith("192.168.") |
+                            col("ip_address").startswith("172."), 1)
+                       .otherwise(0)) \
+            .withColumn("ip_class",
+                       when(col("ip_address").startswith("10."), "class_a")
+                       .when(col("ip_address").startswith("192.168."), "class_c")
+                       .otherwise("public"))
         
         return df_network
     
-    def create_statistical_features(self, df):
-        """
-        Create statistical features based on user behavior
-        
-        Args:
-            df: Input DataFrame
-            
-        Returns:
-            DataFrame with statistical features
-        """
-        logger.info("Creating statistical features...")
-        
-        # User statistical patterns over 24h window
-        user_window_24h = Window.partitionBy("user_id") \
-                                .orderBy(col("timestamp").cast("long")) \
-                                .rangeBetween(-86400, 0)
-        
-        df_stats = df \
-            .withColumn("user_amount_std_24h",
-                        stddev("amount").over(user_window_24h)) \
-            .withColumn("user_amount_median_24h",
-                        expr("percentile_approx(amount, 0.5)").over(user_window_24h)) \
-            .withColumn("user_amount_p95_24h",
-                        expr("percentile_approx(amount, 0.95)").over(user_window_24h))
-        
-        # Z-score for current transaction
-        # df_stats = df_stats \
-        #     .withColumn("amount_zscore_24h",
-        #                when(col("user_amount_std_24h") > 0,
-        #                     (col("amount") - col("user_amount_avg_24h")) / col("user_amount_std_24h"))
-        #                .otherwise(0))
-        
-        return df_stats
-    
     def apply_all_features(self, df, include_optional=True):
         """
-        Apply all feature engineering transformations
+        Apply all streaming-compatible feature engineering transformations
         
         Args:
-            df: Input DataFrame (can be batch or streaming)
+            df: Streaming DataFrame
             include_optional: Include optional features (location, device, network) if data available
             
         Returns:
-            DataFrame with all engineered features
+            DataFrame with all stateless engineered features
             
         Note:
-            For streaming DataFrames, ensure watermark is set on timestamp column before calling this method
-            if using windowed aggregations.
+            This method only applies STATELESS transformations compatible with streaming.
+            All velocity and behavioral features require separate aggregation streams.
         """
-        logger.info("Applying comprehensive feature engineering...")
+        logger.info("Applying streaming-compatible feature engineering...")
         
-        # Core features (always applied)
-        #df_features = self.create_time_based_features(df)
-        df_features = self.create_amount_features(df)
-        #df_features = self.create_velocity_features(df_features)
-        #df_features = self.create_behavioral_features(df_features)
+        df_features = self.create_time_based_features(df)
+        df_features = self.create_amount_features(df_features)
         df_features = self.create_merchant_features(df_features)
-        print("************* DONE ADDING FEATURES")
         
-        # Optional features (only if data is available)
-        if include_optional:            
-            x = 1
-            #df_features = self.create_location_features(df_features)
-            #df_features = self.create_device_features(df_features)
-            #df_features = self.create_network_features(df_features)
-            #df_features = self.create_statistical_features(df_features)
-
-            #df_features = self.create_location_features(df_features)
-            #df_features = self.create_device_features(df_features)
-            #df_features = self.create_network_features(df_features)
-            #df_features = self.create_statistical_features(df_features)
+        if include_optional:
+            df_features = self.create_location_features(df_features)
+            df_features = self.create_device_features(df_features)
+            df_features = self.create_network_features(df_features)
         
-        logger.info("Feature engineering completed successfully!")
+        logger.info("Streaming feature engineering completed!")
         return df_features
     
     def write_features_to_lakebase(self, df, lakebase_client, table_name="transaction_features",
