@@ -225,7 +225,7 @@ class LakebaseClient:
             raise
     
     def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features", 
-                             batch_size: int = 100):
+                             batch_size: int = 10):
         """
         Write a streaming micro-batch to Lakebase
         
@@ -355,6 +355,35 @@ class LakebaseClient:
             logger.error(f"Error getting table stats: {e}")
             raise
 
+    def get_foreach_writer(self, creds, database: str = "databricks_postgres", table_name: str = "transaction_features",
+                    conflict_columns: List[str] = None,
+                    batch_size: int = 10):
+        """
+        Create a ForeachWriter for per-partition streaming writes
+        
+        Args:
+            table_name: Target table name
+            conflict_columns: Columns for ON CONFLICT (default: ["transaction_id"])
+            batch_size: Rows to accumulate before writing
+            
+        Returns:
+            LakebaseForeachWriter instance
+            
+        Example:
+            writer = lakebase_client.get_foreach_writer()
+            query = df.writeStream.foreach(writer).start()
+        """
+        if conflict_columns is None:
+            conflict_columns = ["transaction_id"]
+        
+        return LakebaseForeachWriter(
+            creds=self.get_credentials(),
+            database=database,
+            table_name=table_name,
+            conflict_columns=conflict_columns,
+            batch_size=batch_size
+        )        
+
 
 def get_lakebase_client_from_secrets(spark=None) -> LakebaseClient:
     """
@@ -394,6 +423,9 @@ def get_lakebase_client_from_secrets(spark=None) -> LakebaseClient:
         logger.error(f"Error creating client from secrets: {e}")
         logger.info("Falling back to manual configuration")
         raise
+
+
+
 
 # Add this class to lakebase_client.py
 
@@ -544,37 +576,6 @@ class LakebaseForeachWriter:
                     raise
 
 
-# Add this method to LakebaseClient class:
-
-def get_foreach_writer(self, creds, database: str = "databricks_postgres", table_name: str = "transaction_features",
-                      conflict_columns: List[str] = None,
-                      batch_size: int = 10):
-    """
-    Create a ForeachWriter for per-partition streaming writes
-    
-    Args:
-        table_name: Target table name
-        conflict_columns: Columns for ON CONFLICT (default: ["transaction_id"])
-        batch_size: Rows to accumulate before writing
-        
-    Returns:
-        LakebaseForeachWriter instance
-        
-    Example:
-        writer = lakebase_client.get_foreach_writer()
-        query = df.writeStream.foreach(writer).start()
-    """
-    if conflict_columns is None:
-        conflict_columns = ["transaction_id"]
-    
-    return LakebaseForeachWriter(
-        creds=self.get_credentials(),
-        database=database,
-        table_name=table_name,
-        conflict_columns=conflict_columns,
-        batch_size=batch_size
-    )
-
 # Example usage
 if __name__ == "__main__":
     # Example configuration
@@ -592,4 +593,3 @@ if __name__ == "__main__":
         # Get stats
         stats = client.get_table_stats()
         print(f"Table stats: {stats}")
-
