@@ -14,6 +14,7 @@ Date: October 2025
 """
 
 import psycopg2
+from psycopg2 import OperationalError, DatabaseError
 from psycopg2.extras import execute_batch
 import logging
 from typing import Dict, List, Optional
@@ -22,6 +23,7 @@ from contextlib import contextmanager
 import databricks.sdk
 from databricks.sdk import WorkspaceClient
 import uuid
+import time
 
 
 
@@ -393,6 +395,185 @@ def get_lakebase_client_from_secrets(spark=None) -> LakebaseClient:
         logger.info("Falling back to manual configuration")
         raise
 
+# Add this class to lakebase_client.py
+
+class LakebaseForeachWriter:
+    """
+    ForeachWriter for per-partition streaming writes to Lakebase
+    
+    Usage:
+        writer = lakebase_client.get_foreach_writer(
+            table_name="transaction_features",
+            conflict_columns=["transaction_id"]
+        )
+        query = df.writeStream.foreach(writer).start()
+    """
+    
+    def __init__(self, creds, database, table_name: str, 
+                 conflict_columns: List[str], batch_size: int = 100):
+        """
+        Initialize ForeachWriter
+        
+        Args:
+            creds: lakebase credentials
+            database: database name
+            table_name: Target table name
+            conflict_columns: Columns for ON CONFLICT clause (e.g., ["transaction_id"])
+            batch_size: Number of rows to accumulate before writing
+        """
+        self.creds = creds
+        self.database = database
+        self.table_name = table_name
+        self.conflict_columns = conflict_columns
+        self.batch_size = batch_size
+        self.max_retries = 3
+        
+        # Per-partition state
+        self.conn = None
+        self.cursor = None
+        self.current_batch = []
+        self.column_names = None
+    
+    def open(self, partition_id, epoch_id):
+        """Open connection for this partition"""
+        try:
+            logger.info(f"Opening connection for partition {partition_id}, epoch {epoch_id}")
+            
+            self.conn = psycopg2.connect(
+                host=self.creds['host'],
+                port=self.creds['port'],
+                dbname=self.database,
+                user=self.creds['user'],
+                password=self.creds['password'],
+                connect_timeout=10,
+                sslmode='require'
+            )
+            self.conn.autocommit = False
+            self.cursor = self.conn.cursor()
+            self.current_batch = []
+            return True
+        except Exception as e:
+            logger.error(f"Error opening connection for partition {partition_id}: {e}")
+            return False
+    
+    def process(self, row):
+        """Process a single row"""
+        try:
+            # Get column names from first row
+            if self.column_names is None:
+                self.column_names = row.asDict().keys()
+            
+            # Convert row to values tuple
+            values = tuple(row[col] for col in self.column_names)
+            self.current_batch.append(values)
+            
+            # Flush when batch is full
+            if len(self.current_batch) >= self.batch_size:
+                self._execute_batch()
+        except Exception as e:
+            logger.error(f"Error processing row: {e}")
+            raise
+    
+    def close(self, error):
+        """Close connection and flush remaining batch"""
+        try:
+            if error is None and self.current_batch:
+                self._execute_batch()
+            elif error is not None:
+                logger.error(f"Error in partition, rolling back: {error}")
+                if self.conn:
+                    self.conn.rollback()
+        except Exception as e:
+            logger.error(f"Error during close: {e}")
+        finally:
+            if self.cursor:
+                try:
+                    self.cursor.close()
+                except Exception:
+                    pass
+            if self.conn:
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
+    
+    def _execute_batch(self):
+        """Execute the accumulated batch with retry logic"""
+        if not self.current_batch:
+            return
+        
+        def _execute():
+            start_time = time.time()
+            logger.info(f"Writing batch of {len(self.current_batch)} rows...")
+            
+            # Build upsert SQL
+            columns_str = ','.join(self.column_names)
+            placeholders = ','.join(['%s'] * len(self.column_names))
+            conflict_str = ','.join(self.conflict_columns)
+            update_cols = [col for col in self.column_names if col not in self.conflict_columns]
+            update_str = ','.join([f"{col}=EXCLUDED.{col}" for col in update_cols])
+            
+            sql = f"""
+                INSERT INTO {self.table_name} ({columns_str})
+                VALUES ({placeholders})
+                ON CONFLICT ({conflict_str}) DO UPDATE SET {update_str}
+            """
+            
+            execute_batch(self.cursor, sql, self.current_batch, page_size=self.batch_size)
+            self.conn.commit()
+            self.current_batch = []
+            
+            elapsed = time.time() - start_time
+            logger.info(f"Batch complete in {elapsed:.2f}s")
+        
+        # Execute with retry
+        self._with_retry(_execute)
+    
+    def _with_retry(self, fn):
+        """Execute function with retry logic"""
+        for attempt in range(self.max_retries):
+            try:
+                fn()
+                return
+            except (OperationalError, DatabaseError) as e:
+                if attempt < self.max_retries - 1:
+                    logger.warning(f"Retry {attempt + 1}/{self.max_retries} after error: {e}")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    logger.error(f"Failed after {self.max_retries} retries")
+                    raise
+
+
+# Add this method to LakebaseClient class:
+
+def get_foreach_writer(self, creds, database: str = "databricks_postgres", table_name: str = "transaction_features",
+                      conflict_columns: List[str] = None,
+                      batch_size: int = 10):
+    """
+    Create a ForeachWriter for per-partition streaming writes
+    
+    Args:
+        table_name: Target table name
+        conflict_columns: Columns for ON CONFLICT (default: ["transaction_id"])
+        batch_size: Rows to accumulate before writing
+        
+    Returns:
+        LakebaseForeachWriter instance
+        
+    Example:
+        writer = lakebase_client.get_foreach_writer()
+        query = df.writeStream.foreach(writer).start()
+    """
+    if conflict_columns is None:
+        conflict_columns = ["transaction_id"]
+    
+    return LakebaseForeachWriter(
+        creds=self.get_credentials(),
+        database=database,
+        table_name=table_name,
+        conflict_columns=conflict_columns,
+        batch_size=batch_size
+    )
 
 # Example usage
 if __name__ == "__main__":
