@@ -9,6 +9,7 @@
 /comprehensive-dashboard-suite/* @mohanab-db
 /bias-variance-trade-off/* @kwulffert23 @johnkdb @marzervou
 /dspy-multi-agent-with-classic-ML/* @auschoi96
+/chemprop/* @yenlow
 /interactive-apps-with-databricks/* @anupkalburgi @girip-db
 /sap-graphrag-agent/* @real-oneill @caiofarias
 /agent_chat/* @vivian-xie-db
@@ -17,4 +18,9 @@
 /dabs-gitflow/* @ajalisatgi @pritishpai
 /2025-04-investment-assistant-with-databricks-agent-framework/* @sarbaniAi
 /managing_ml_library_dependency_on_databricks/* @hengrumay
+/automated-claims-processing/* @samanthawise @antondusak
 /2025-05-transformWithStateInPandas/* @jpdatabricks
+/2025-06-uc-migration-workflow-scoping/* @prashsub
+/2025-07-sessionization-transformWithStateInPandas/* @thangam-vaiyapuri
+/2025-07-fast-track-to-serverless/* @Luxabor
+/2025-08-sql-stored-procedures/* @davidm-db
