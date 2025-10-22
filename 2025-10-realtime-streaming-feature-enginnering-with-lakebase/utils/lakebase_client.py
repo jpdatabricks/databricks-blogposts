@@ -128,117 +128,47 @@ class LakebaseClient:
             logger.error(f"Lakebase connection test failed: {e}")
             return False
     
-    def create_transaction_features_table(self, table_name: str = "transaction_features"):
+    def create_feature_table(self, table_name: str = "transaction_features"):
         """
-        Create the transaction features table in Lakebase (stateless features only)
+        Create the unified feature table in Lakebase PostgreSQL.
         
-        This table is used by 01_streaming_features.ipynb for stateless feature engineering.
+        This table combines BOTH stateless transaction features AND stateful fraud detection features
+        in a single, comprehensive schema optimized for real-time ML model serving.
+        
+        Use Cases:
+        - 01_streaming_features.ipynb: Stateless feature engineering (populates ~40 columns)
+        - 02_stateful_fraud_detection.ipynb: Stateful fraud detection (populates all ~70 columns)
+        
+        Table Schema (~70+ columns total):
+        
+        **Stateless Features (~40 columns):**
+        - Time-based: year, month, day, hour, cyclical encodings, business hour flags
+        - Amount-based: log, sqrt, squared, categories, round amount flags
+        - Merchant: risk scores, category risk levels
+        - Location: high-risk flags, international, region
+        - Device: device type, has_device_id flag
+        - Network: Tor/private IP detection, IP class
+        
+        **Stateful Features (~25 columns):**
+        - Velocity: transaction counts in time windows
+        - IP tracking: IP change detection and counts
+        - Location anomalies: distance from last, velocity (km/h)
+        - Amount anomalies: ratios, z-scores
+        - Fraud indicators: rapid transactions, impossible travel, amount anomalies
+        - Composite: fraud_score (0-100), is_fraud_prediction (binary)
+        
+        **Metadata (~5 columns):**
+        - created_at, processing_timestamp
         
         Args:
-            table_name: Name of the table to create
-        """
-        create_table_sql = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            -- Primary keys
-            transaction_id VARCHAR(50) PRIMARY KEY,
-            timestamp TIMESTAMP NOT NULL,
-            
-            -- Original transaction data
-            user_id VARCHAR(50) NOT NULL,
-            merchant_id VARCHAR(50),
-            amount DOUBLE PRECISION,
-            currency VARCHAR(10),
-            merchant_category VARCHAR(50),
-            payment_method VARCHAR(50),
-            ip_address VARCHAR(50),
-            device_id VARCHAR(50),
-            location_lat DOUBLE PRECISION,
-            location_lon DOUBLE PRECISION,
-            card_type VARCHAR(20),
-            
-            -- Time-based features (create_time_based_features)
-            year INTEGER,
-            month INTEGER,
-            day INTEGER,
-            hour INTEGER,
-            minute INTEGER,
-            day_of_week INTEGER,
-            day_of_year INTEGER,
-            week_of_year INTEGER,
-            is_business_hour INTEGER,
-            is_weekend INTEGER,
-            is_holiday INTEGER,
-            is_night INTEGER,
-            is_early_morning INTEGER,
-            hour_sin DOUBLE PRECISION,
-            hour_cos DOUBLE PRECISION,
-            day_of_week_sin DOUBLE PRECISION,
-            day_of_week_cos DOUBLE PRECISION,
-            month_sin DOUBLE PRECISION,
-            month_cos DOUBLE PRECISION,
-            
-            -- Amount-based features (create_amount_features)
-            amount_log DOUBLE PRECISION,
-            amount_sqrt DOUBLE PRECISION,
-            amount_squared DOUBLE PRECISION,
-            amount_category VARCHAR(20),
-            is_round_amount INTEGER,
-            is_exact_amount INTEGER,
-            amount_zscore DOUBLE PRECISION,
-            
-            -- Merchant features (create_merchant_features)
-            merchant_risk_score DOUBLE PRECISION,
-            merchant_category_risk VARCHAR(20),
-            
-            -- Location features (create_location_features - optional)
-            is_high_risk_location INTEGER,
-            is_international INTEGER,
-            location_region VARCHAR(20),
-            
-            -- Device features (create_device_features - optional)
-            has_device_id INTEGER,
-            device_type VARCHAR(20),
-            
-            -- Network features (create_network_features - optional)
-            is_tor_ip INTEGER,
-            is_private_ip INTEGER,
-            ip_class VARCHAR(20),
-            
-            -- Processing metadata
-            processing_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            table_name: Name of the table to create (default: transaction_features)
+                       Common names: "transaction_features", "fraud_features"
         
-        -- Create indexes for performance
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_timestamp ON {table_name}(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_user_id ON {table_name}(user_id);
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_id ON {table_name}(merchant_id);
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_category ON {table_name}(merchant_category);
-        CREATE INDEX IF NOT EXISTS idx_{table_name}_device_id ON {table_name}(device_id);
-        """
-        
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(create_table_sql)
-                cursor.close()
-                logger.info(f"Created table: {table_name}")
-        except Exception as e:
-            logger.error(f"Error creating table: {e}")
-            raise
-    
-    def create_fraud_features_table(self, table_name: str = "fraud_features"):
-        """
-        Create the unified fraud features table in Lakebase
-        
-        This table combines BOTH stateless transaction features AND stateful fraud detection features.
-        Used by 02_stateful_fraud_detection.ipynb.
-        
-        Schema includes:
-        - Stateless features: time, amount, merchant, location, device, network features
-        - Stateful features: velocity, IP tracking, location anomalies, fraud scores
-        
-        Args:
-            table_name: Name of the table to create (default: fraud_features)
+        Benefits:
+        - Single source of truth for all features
+        - No joins needed for model inference (<10ms latency)
+        - Unified schema for all notebooks
+        - Easier to maintain and evolve
         """
         create_table_sql = f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
@@ -361,9 +291,9 @@ class LakebaseClient:
                 cursor = conn.cursor()
                 cursor.execute(create_table_sql)
                 cursor.close()
-                logger.info(f"Created unified fraud features table: {table_name}")
+                logger.info(f"Created unified feature table: {table_name} (~70+ columns)")
         except Exception as e:
-            logger.error(f"Error creating fraud features table: {e}")
+            logger.error(f"Error creating feature table: {e}")
             raise
     
     def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features", 
@@ -729,12 +659,12 @@ if __name__ == "__main__":
     if client.test_connection():
         print("Connected to Lakebase!")
         
-        # Create transaction features table (stateless features)
-        client.create_transaction_features_table()
-        
-        # Or create fraud features table (unified: stateless + stateful)
-        client.create_fraud_features_table()
+        # Create unified feature table (stateless + stateful features)
+        # Works for both use cases:
+        # - Transaction features (stateless only)
+        # - Fraud features (stateless + stateful)
+        client.create_feature_table("transaction_features")  # or "fraud_features"
         
         # Get stats
-        stats = client.get_table_stats("fraud_features")
+        stats = client.get_table_stats("transaction_features")
         print(f"Table stats: {stats}")
