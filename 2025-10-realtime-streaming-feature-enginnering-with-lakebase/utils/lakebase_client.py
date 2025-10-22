@@ -128,9 +128,11 @@ class LakebaseClient:
             logger.error(f"Lakebase connection test failed: {e}")
             return False
     
-    def create_feature_table(self, table_name: str = "transaction_features"):
+    def create_transaction_features_table(self, table_name: str = "transaction_features"):
         """
-        Create the transaction features table in Lakebase
+        Create the transaction features table in Lakebase (stateless features only)
+        
+        This table is used by 01_streaming_features.ipynb for stateless feature engineering.
         
         Args:
             table_name: Name of the table to create
@@ -222,6 +224,146 @@ class LakebaseClient:
                 logger.info(f"Created table: {table_name}")
         except Exception as e:
             logger.error(f"Error creating table: {e}")
+            raise
+    
+    def create_fraud_features_table(self, table_name: str = "fraud_features"):
+        """
+        Create the unified fraud features table in Lakebase
+        
+        This table combines BOTH stateless transaction features AND stateful fraud detection features.
+        Used by 02_stateful_fraud_detection.ipynb.
+        
+        Schema includes:
+        - Stateless features: time, amount, merchant, location, device, network features
+        - Stateful features: velocity, IP tracking, location anomalies, fraud scores
+        
+        Args:
+            table_name: Name of the table to create (default: fraud_features)
+        """
+        create_table_sql = f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            -- Primary keys
+            transaction_id VARCHAR(100) PRIMARY KEY,
+            timestamp TIMESTAMP NOT NULL,
+            
+            -- Original transaction data
+            user_id VARCHAR(100) NOT NULL,
+            merchant_id VARCHAR(100),
+            amount DOUBLE PRECISION NOT NULL,
+            currency VARCHAR(10),
+            merchant_category VARCHAR(50),
+            payment_method VARCHAR(50),
+            ip_address VARCHAR(50),
+            device_id VARCHAR(50),
+            latitude DOUBLE PRECISION,
+            longitude DOUBLE PRECISION,
+            card_type VARCHAR(20),
+            
+            -- Time-based features (stateless - from FeatureEngineer)
+            year INTEGER,
+            month INTEGER,
+            day INTEGER,
+            hour INTEGER,
+            minute INTEGER,
+            day_of_week INTEGER,
+            day_of_year INTEGER,
+            week_of_year INTEGER,
+            is_business_hour INTEGER,
+            is_weekend INTEGER,
+            is_holiday INTEGER,
+            is_night INTEGER,
+            is_early_morning INTEGER,
+            hour_sin DOUBLE PRECISION,
+            hour_cos DOUBLE PRECISION,
+            day_of_week_sin DOUBLE PRECISION,
+            day_of_week_cos DOUBLE PRECISION,
+            month_sin DOUBLE PRECISION,
+            month_cos DOUBLE PRECISION,
+            
+            -- Amount-based features (stateless - from FeatureEngineer)
+            amount_log DOUBLE PRECISION,
+            amount_sqrt DOUBLE PRECISION,
+            amount_squared DOUBLE PRECISION,
+            amount_category VARCHAR(20),
+            is_round_amount INTEGER,
+            is_exact_amount INTEGER,
+            
+            -- Merchant features (stateless - from FeatureEngineer)
+            merchant_risk_score DOUBLE PRECISION,
+            merchant_category_risk VARCHAR(20),
+            
+            -- Location features (stateless - from FeatureEngineer)
+            is_high_risk_location INTEGER,
+            is_international INTEGER,
+            location_region VARCHAR(20),
+            
+            -- Device features (stateless - from FeatureEngineer)
+            has_device_id INTEGER,
+            device_type VARCHAR(20),
+            
+            -- Network features (stateless - from FeatureEngineer)
+            is_tor_ip INTEGER,
+            is_private_ip INTEGER,
+            ip_class VARCHAR(20),
+            
+            -- ============================================
+            -- STATEFUL FRAUD DETECTION FEATURES
+            -- (from FraudDetectorProcessor)
+            -- ============================================
+            
+            -- Velocity features (stateful)
+            user_transaction_count INTEGER,
+            transactions_last_hour INTEGER,
+            transactions_last_10min INTEGER,
+            
+            -- IP tracking features (stateful)
+            ip_changed INTEGER,
+            ip_change_count_total INTEGER,
+            
+            -- Location anomaly features (stateful)
+            distance_from_last_km DOUBLE PRECISION,
+            velocity_kmh DOUBLE PRECISION,
+            
+            -- Amount anomaly features (stateful)
+            amount_vs_user_avg_ratio DOUBLE PRECISION,
+            amount_vs_user_max_ratio DOUBLE PRECISION,
+            amount_zscore DOUBLE PRECISION,
+            
+            -- Time features (stateful)
+            seconds_since_last_transaction DOUBLE PRECISION,
+            
+            -- Fraud indicators (stateful)
+            is_rapid_transaction INTEGER,
+            is_impossible_travel INTEGER,
+            is_amount_anomaly INTEGER,
+            
+            -- Composite fraud score and prediction (stateful)
+            fraud_score DOUBLE PRECISION,
+            is_fraud_prediction INTEGER,
+            
+            -- Processing metadata
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            processing_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_user_id ON {table_name}(user_id);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_timestamp ON {table_name}(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_id ON {table_name}(merchant_id);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_merchant_category ON {table_name}(merchant_category);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_fraud_score ON {table_name}(fraud_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_fraud_prediction ON {table_name}(is_fraud_prediction);
+        CREATE INDEX IF NOT EXISTS idx_{table_name}_device_id ON {table_name}(device_id);
+        """
+        
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(create_table_sql)
+                cursor.close()
+                logger.info(f"Created unified fraud features table: {table_name}")
+        except Exception as e:
+            logger.error(f"Error creating fraud features table: {e}")
             raise
     
     def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features", 
@@ -587,9 +729,12 @@ if __name__ == "__main__":
     if client.test_connection():
         print("Connected to Lakebase!")
         
-        # Create table
-        client.create_feature_table()
+        # Create transaction features table (stateless features)
+        client.create_transaction_features_table()
+        
+        # Or create fraud features table (unified: stateless + stateful)
+        client.create_fraud_features_table()
         
         # Get stats
-        stats = client.get_table_stats()
+        stats = client.get_table_stats("fraud_features")
         print(f"Table stats: {stats}")
