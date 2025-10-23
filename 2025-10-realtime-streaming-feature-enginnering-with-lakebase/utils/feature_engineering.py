@@ -504,8 +504,6 @@ class FraudDetectionFeaturesProcessor:
         Args:
             handle: StatefulProcessorHandle for state management
         """
-        from pyspark.sql.streaming.state import TTLConfig
-        
         self.handle = handle
         
         # Define comprehensive state schema - consolidates ALL state into one object
@@ -532,13 +530,10 @@ class FraudDetectionFeaturesProcessor:
             StructField("recent_amounts", ArrayType(DoubleType()), False)
         ])
         
-        # Initialize SINGLE consolidated state variable with TTL (1 hour of inactivity)
-        ttl_config = TTLConfig(ttl_duration=timedelta(hours=1))
-        
         self.user_state = handle.getValueState(
             "user_fraud_state",  # Single state variable name
             state_schema,
-            ttl_config
+            ttlDurationMs=3600000 #1 hour
         )
     
     def handleInputRows(self, key, rows, timer_values):
@@ -600,8 +595,8 @@ class FraudDetectionFeaturesProcessor:
             for idx, row in pdf.iterrows():
                 current_time = row['timestamp']
                 current_ip = row['ip_address']
-                current_lat = row['latitude']
-                current_lon = row['longitude']
+                current_lat = row['location_lat']
+                current_lon = row['location_lon']
                 current_amount = row['amount']
                 
                 # Update transaction count
@@ -632,7 +627,7 @@ class FraudDetectionFeaturesProcessor:
                 # Amount-based features
                 prev_total_amount += current_amount
                 prev_avg_amount = prev_total_amount / prev_count
-                prev_max_amount = max(prev_max_amount, current_amount)
+                prev_max_amount = prev_max_amount if  prev_max_amount > current_amount else current_amount
                 
                 amount_vs_avg_ratio = current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
                 amount_vs_max_ratio = current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
@@ -644,12 +639,9 @@ class FraudDetectionFeaturesProcessor:
                     if amounts_std > 0:
                         amount_zscore = (current_amount - prev_avg_amount) / amounts_std
                 
-                # Update recent transactions (bounded to 50)
+                # Update recent transactions
                 prev_times.append(current_time)
                 prev_amounts.append(current_amount)
-                if len(prev_times) > 50:
-                    prev_times = prev_times[-50:]
-                    prev_amounts = prev_amounts[-50:]
                 
                 # Count transactions in time windows
                 one_hour_ago = current_time - timedelta(hours=1)
