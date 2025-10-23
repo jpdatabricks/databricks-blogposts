@@ -15,7 +15,7 @@ real-time transaction data, including both stateless and stateful transformation
    - Device features (device type detection)
    - Network features (IP classification, private/public)
 
-2. **FraudDetectorProcessor (Class)**: Stateful fraud detection processor
+2. **FraudDetectionFeaturesProcessor (Class)**: Stateful fraud detection processor
    - Transaction velocity analysis (time windows)
    - IP address change tracking
    - Geographic anomaly detection (impossible travel)
@@ -32,7 +32,7 @@ Databricks Lakebase PostgreSQL.
 
 **Usage:**
 ```python
-from utils.feature_engineering import AdvancedFeatureEngineering, FraudDetectorProcessor
+from utils.feature_engineering import AdvancedFeatureEngineering, FraudDetectionFeaturesProcessor
 
 # Stateless features
 feature_engineer = AdvancedFeatureEngineering(spark)
@@ -43,7 +43,7 @@ df_with_fraud = df_streaming \\
     .withWatermark("timestamp", "10 minutes") \\
     .groupBy("user_id") \\
     .transformWithStateInPandas(
-        statefulProcessor=FraudDetectorProcessor(),
+        statefulProcessor=FraudDetectionFeaturesProcessor(),
         outputStructType=fraud_output_schema,
         outputMode="Append",
         timeMode="None"
@@ -419,7 +419,7 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 
-class FraudDetectorProcessor:
+class FraudDetectionFeaturesProcessor:
     """
     StatefulProcessor for real-time fraud detection using transformWithStateInPandas.
     
@@ -436,14 +436,14 @@ class FraudDetectorProcessor:
     **Usage:**
     ```python
     from pyspark.sql.streaming import StatefulProcessor
-    from utils.feature_engineering import FraudDetectorProcessor
+    from utils.feature_engineering import FraudDetectionFeaturesProcessor
     
     # Apply to streaming DataFrame
     df_with_fraud_features = df_transactions \\
         .withWatermark("timestamp", "10 minutes") \\
         .groupBy("user_id") \\
         .transformWithStateInPandas(
-            statefulProcessor=FraudDetectorProcessor(),
+            statefulProcessor=FraudDetectionFeaturesProcessor(),
             outputStructType=output_schema,
             outputMode="Append",
             timeMode="None"
