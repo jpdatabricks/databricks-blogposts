@@ -433,23 +433,6 @@ class FraudDetectionFeaturesProcessor:
     - Apache Spark 4.0+ (for transformWithStateInPandas support)
     - PySpark Structured Streaming
     
-    **Usage:**
-    ```python
-    from pyspark.sql.streaming import StatefulProcessor
-    from utils.feature_engineering import FraudDetectionFeaturesProcessor
-    
-    # Apply to streaming DataFrame
-    df_with_fraud_features = df_transactions \\
-        .withWatermark("timestamp", "10 minutes") \\
-        .groupBy("user_id") \\
-        .transformWithStateInPandas(
-            statefulProcessor=FraudDetectionFeaturesProcessor(),
-            outputStructType=output_schema,
-            outputMode="Append",
-            timeMode="None"
-        )
-    ```
-    
     **State Management:**
     Uses a single consolidated ValueState object containing:
     - Transaction count
