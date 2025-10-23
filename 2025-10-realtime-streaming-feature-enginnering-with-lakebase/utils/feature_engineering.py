@@ -54,15 +54,11 @@ Author: Databricks
 Date: October 2025
 """
 
-from pyspark.sql import SparkSession, Window
+from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
-from pyspark.ml.feature import VectorAssembler, StandardScaler, StringIndexer, OneHotEncoder
-from pyspark.ml.stat import Correlation
-from delta.tables import DeltaTable
 import logging
 from datetime import datetime, timedelta
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
