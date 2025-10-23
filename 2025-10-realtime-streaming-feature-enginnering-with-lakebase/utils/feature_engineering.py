@@ -477,7 +477,7 @@ class FraudDetectionFeaturesProcessor:
     - Last transaction details (timestamp, IP, location)
     - IP change count
     - Amount statistics (total, avg, max)
-    - Recent transaction history (bounded to 50 transactions)
+    - Recent transaction history
     
     **Fraud Score Calculation (0-100 points):**
     - Rapid transactions (5+ in 10 min): +20 points
@@ -639,16 +639,16 @@ class FraudDetectionFeaturesProcessor:
                     if amounts_std > 0:
                         amount_zscore = (current_amount - prev_avg_amount) / amounts_std
                 
-                # Update recent transactions
-                prev_times.append(current_time)
-                prev_amounts.append(current_amount)
-                
-                # Count transactions in time windows
+                # Count transactions in time windows (BEFORE adding current transaction)
                 one_hour_ago = current_time - timedelta(hours=1)
                 ten_min_ago = current_time - timedelta(minutes=10)
                 
                 trans_last_hour = sum(1 for t in prev_times if t >= one_hour_ago)
                 trans_last_10min = sum(1 for t in prev_times if t >= ten_min_ago)
+                
+                # Update recent transactions (AFTER calculating time windows)
+                prev_times.append(current_time)
+                prev_amounts.append(current_amount)
                 
                 # Fraud indicators
                 is_rapid = 1 if trans_last_10min >= 5 else 0
