@@ -62,7 +62,6 @@ from pyspark.sql.functions import *
 from pyspark.sql.types import *
 import logging
 from datetime import datetime, timedelta
-import builtins
 
 logger = logging.getLogger(__name__)
 
@@ -650,8 +649,8 @@ class FraudDetectionFeaturesProcessor:
                 one_hour_ago = current_time - timedelta(hours=1)
                 ten_min_ago = current_time - timedelta(minutes=10)
                 
-                trans_last_hour = builtins.sum(1 for t in prev_times if t >= one_hour_ago)
-                trans_last_10min = builtins.sum(1 for t in prev_times if t >= ten_min_ago)
+                trans_last_hour = sum(1 for t in prev_times if t >= one_hour_ago)
+                trans_last_10min = sum(1 for t in prev_times if t >= ten_min_ago)
                 
                 # Fraud indicators
                 is_rapid = 1 if trans_last_10min >= 5 else 0
