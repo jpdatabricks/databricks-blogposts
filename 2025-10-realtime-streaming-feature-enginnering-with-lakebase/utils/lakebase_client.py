@@ -309,10 +309,6 @@ class LakebaseClient:
             table_name: Target table name
             batch_size: Number of rows per batch for insert
         """
-        if batch_df.isEmpty():
-            logger.info(f"Batch {batch_id}: Empty, skipping")
-            return
-        
         logger.info(f"Processing batch {batch_id}...")
         
         pandas_df = batch_df.toPandas()

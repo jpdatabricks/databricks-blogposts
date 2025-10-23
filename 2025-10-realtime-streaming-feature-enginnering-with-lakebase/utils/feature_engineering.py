@@ -55,6 +55,8 @@ Author: Databricks
 Date: October 2025
 """
 
+from typing import Iterator
+import pandas as pd
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
@@ -537,7 +539,7 @@ class FraudDetectionFeaturesProcessor:
             ttlDurationMs=3600000 #1 hour
         )
     
-    def handleInputRows(self, key, rows, timer_values):
+    def handleInputRows(self, key, rows: Iterator[pd.DataFrame], timer_values) -> Iterator[pd.DataFrame]:
         """
         Process input rows for a given user and emit fraud features.
         
@@ -552,7 +554,7 @@ class FraudDetectionFeaturesProcessor:
         import pandas as pd
         import numpy as np
         
-        user_id = key
+        user_id, = key
         
         # Process each micro-batch
         for pdf in rows:
@@ -628,7 +630,7 @@ class FraudDetectionFeaturesProcessor:
                 # Amount-based features
                 prev_total_amount += current_amount
                 prev_avg_amount = prev_total_amount / prev_count
-                prev_max_amount = prev_max_amount if  prev_max_amount > current_amount else current_amount
+                prev_max_amount = builtins.max(prev_max_amount, current_amount)
                 
                 amount_vs_avg_ratio = current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
                 amount_vs_max_ratio = current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
@@ -654,7 +656,7 @@ class FraudDetectionFeaturesProcessor:
                 # Fraud indicators
                 is_rapid = 1 if trans_last_10min >= 5 else 0
                 is_impossible_travel = 1 if velocity_kmh is not None and velocity_kmh > 800 else 0
-                is_amount_anomaly = 1 if amount_zscore is not None and abs(amount_zscore) > 3 else 0
+                is_amount_anomaly = 1 if amount_zscore is not None and builtins.abs(amount_zscore) > 3 else 0
                 
                 # Calculate fraud score (0-100)
                 fraud_score = 0.0
@@ -668,7 +670,7 @@ class FraudDetectionFeaturesProcessor:
                     fraud_score += 15
                 if trans_last_hour >= 10:
                     fraud_score += 10
-                fraud_score = min(fraud_score, 100.0)
+                fraud_score = builtins.min(fraud_score, 100.0)
                 
                 # Fraud prediction
                 is_fraud_pred = 1 if fraud_score >= 50 else 0

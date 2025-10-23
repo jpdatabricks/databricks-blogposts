@@ -22,12 +22,7 @@ Transaction Stream → Feature Engineering → Lakebase PostgreSQL → Real-time
 
 ## Quick Start
 
-### 1. Read Conventions
-```bash
-cat .cursorrules  # Understand project conventions and terminology
-```
-
-### 2. Provision Lakebase
+### 1. Provision Lakebase
 ```
 Databricks Workspace:
   → Compute → OLTP Database → Create instance
@@ -35,7 +30,7 @@ Databricks Workspace:
   → Size: Small (start)
 ```
 
-### 3. Configure Connection
+### 2. Configure Connection
 ```python
 # Update in 00_setup.ipynb
 LAKEBASE_CONFIG = {
@@ -44,26 +39,25 @@ LAKEBASE_CONFIG = {
 }
 ```
 
-### 4. Run Setup
+### 3. Run Setup
 ```bash
 # Run notebook
 00_setup.ipynb
 ```
 
-### 5. Run Demo
+### 4. Run Demo
 ```bash
 # Run streaming feature engineering demo
-01_streaming_features.ipynb
+streaming_fraud_detection_pipeline.ipynb
 ```
 
 ## File Structure
 
 ```
 project/
-├── .cursorrules                    ← START HERE (conventions & rules)
 ├── README.md                       ← This file
 ├── 00_setup.ipynb                  ← Initial setup
-├── 01_streaming_features.ipynb     ← Streaming feature engineering demo
+├── 01_streaming_fraud_detection_pipeline.ipynb     ← Streaming feature engineering demo
 └── utils/
     ├── lakebase_client.py          ← PostgreSQL client
     ├── data_generator.py           ← Streaming data generator
