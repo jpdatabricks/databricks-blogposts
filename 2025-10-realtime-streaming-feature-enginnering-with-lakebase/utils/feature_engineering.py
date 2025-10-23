@@ -25,6 +25,7 @@ real-time transaction data, including both stateless and stateful transformation
 
 3. **Helper Functions**:
    - calculate_haversine_distance(): Geographic distance calculation
+   - get_fraud_detection_output_schema(): Output schema for fraud detection features
 
 **STREAMING-ONLY DESIGN**: This module does NOT support batch processing.
 All features are designed to work with PySpark Structured Streaming and
@@ -380,6 +381,47 @@ class AdvancedFeatureEngineering:
 # =============================================================================
 # STATEFUL FRAUD DETECTION PROCESSOR
 # =============================================================================
+
+def get_fraud_detection_output_schema():
+    """
+    Get the output schema for FraudDetectionFeaturesProcessor.
+    
+    This schema defines the structure of fraud detection features that will be
+    emitted by transformWithStateInPandas and written to the fraud_features table.
+    
+    Returns:
+        StructType: Complete output schema with core transaction fields and fraud features
+    """
+    return StructType([
+        # Core transaction fields
+        StructField("transaction_id", StringType(), False),
+        StructField("user_id", StringType(), False),
+        StructField("timestamp", TimestampType(), False),
+        StructField("amount", DoubleType(), False),
+        StructField("merchant_id", StringType(), False),
+        StructField("ip_address", StringType(), False),
+        StructField("latitude", DoubleType(), False),
+        StructField("longitude", DoubleType(), False),
+        
+        # Stateful fraud detection features
+        StructField("user_transaction_count", IntegerType(), False),
+        StructField("transactions_last_hour", IntegerType(), False),
+        StructField("transactions_last_10min", IntegerType(), False),
+        StructField("ip_changed", IntegerType(), False),
+        StructField("ip_change_count_total", IntegerType(), False),
+        StructField("distance_from_last_km", DoubleType(), True),
+        StructField("velocity_kmh", DoubleType(), True),
+        StructField("amount_vs_user_avg_ratio", DoubleType(), True),
+        StructField("amount_vs_user_max_ratio", DoubleType(), True),
+        StructField("amount_zscore", DoubleType(), True),
+        StructField("seconds_since_last_transaction", DoubleType(), True),
+        StructField("is_rapid_transaction", IntegerType(), False),
+        StructField("is_impossible_travel", IntegerType(), False),
+        StructField("is_amount_anomaly", IntegerType(), False),
+        StructField("fraud_score", DoubleType(), False),
+        StructField("is_fraud_prediction", IntegerType(), False)
+    ])
+
 
 def calculate_haversine_distance(lat1, lon1, lat2, lon2):
     """
