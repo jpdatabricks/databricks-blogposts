@@ -561,7 +561,7 @@ class FraudDetectionFeaturesProcessor:
         import pandas as pd
         import numpy as np
         
-        user_id = key
+        user_id, = key
         
         # Process each micro-batch
         for pdf in rows:
@@ -637,7 +637,7 @@ class FraudDetectionFeaturesProcessor:
                 # Amount-based features
                 prev_total_amount += current_amount
                 prev_avg_amount = prev_total_amount / prev_count
-                prev_max_amount = prev_max_amount if  prev_max_amount > current_amount else current_amount
+                prev_max_amount = builtins.max(prev_max_amount, current_amount)
                 
                 amount_vs_avg_ratio = current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
                 amount_vs_max_ratio = current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
@@ -657,13 +657,13 @@ class FraudDetectionFeaturesProcessor:
                 one_hour_ago = current_time - timedelta(hours=1)
                 ten_min_ago = current_time - timedelta(minutes=10)
                 
-                trans_last_hour = sum(1 for t in prev_times if t >= one_hour_ago)
-                trans_last_10min = sum(1 for t in prev_times if t >= ten_min_ago)
+                trans_last_hour = builtins.sum(1 for t in prev_times if t >= one_hour_ago)
+                trans_last_10min = builtins.sum(1 for t in prev_times if t >= ten_min_ago)
                 
                 # Fraud indicators
                 is_rapid = 1 if trans_last_10min >= 5 else 0
                 is_impossible_travel = 1 if velocity_kmh is not None and velocity_kmh > 800 else 0
-                is_amount_anomaly = 1 if amount_zscore is not None and abs(amount_zscore) > 3 else 0
+                is_amount_anomaly = 1 if amount_zscore is not None and builtins.abs(amount_zscore) > 3 else 0
                 
                 # Calculate fraud score (0-100)
                 fraud_score = 0.0
