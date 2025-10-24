@@ -1,6 +1,6 @@
 # Real-Time Streaming Feature Engineering with Lakebase PostgreSQL
 
-> **📌 PROJECT CONVENTION:** "Lakebase" in this project ALWAYS refers to **Databricks Lakebase PostgreSQL** (OLTP database, port 5432), NOT Delta Lake. See [`.cursorrules`](.cursorrules) for details.
+> **📌 PROJECT CONVENTION:** "Lakebase" in this project ALWAYS refers to **Databricks Lakebase PostgreSQL** (OLTP database, port 5432), NOT Delta Lake.
 
 ## Overview
 
@@ -56,7 +56,6 @@ streaming_fraud_detection_pipeline.ipynb
 ```
 project/
 ├── README.md                                      ← This file
-├── .cursorrules                                   ← Project conventions (read first!)
 ├── 00_setup.ipynb                                 ← Initial setup and table creation
 ├── 01_streaming_fraud_detection_pipeline.ipynb    ← End-to-end streaming pipeline
 └── utils/
@@ -67,9 +66,8 @@ project/
 
 ## Documentation
 
-1. **[.cursorrules](.cursorrules)** - Project conventions and rules (read first!)
-2. **[00_setup.ipynb](00_setup.ipynb)** - Setup and configuration guide
-3. **[01_streaming_fraud_detection_pipeline.ipynb](01_streaming_fraud_detection_pipeline.ipynb)** - End-to-end pipeline demo
+1. **[00_setup.ipynb](00_setup.ipynb)** - Setup and configuration guide
+2. **[01_streaming_fraud_detection_pipeline.ipynb](01_streaming_fraud_detection_pipeline.ipynb)** - End-to-end pipeline demo
 
 ## Key Features
 

@@ -7,7 +7,6 @@ to Databricks Lakebase (PostgreSQL-compatible OLTP database).
 
 IMPORTANT: In this project, "Lakebase" ALWAYS refers to Lakebase PostgreSQL
 (OLTP database at port 5432), NOT Delta Lake or any other storage layer.
-See .cursorrules for project conventions.
 
 Author: Databricks
 Date: October 2025
