@@ -2,8 +2,14 @@
 Synthetic Data Generator for Streaming Feature Engineering
 ==========================================================
 
-This module generates realistic synthetic transaction data
-for testing the streaming feature engineering pipeline.
+This module generates realistic synthetic transaction data for testing
+the streaming feature engineering pipeline.
+
+**STREAMING-ONLY**: This module generates streaming DataFrames using
+PySpark's rate source. All output is streaming-compatible.
+
+Classes:
+    TransactionDataGenerator: Generates streaming synthetic transaction data
 
 Author: Databricks
 Date: October 2025
@@ -21,7 +27,22 @@ logger = logging.getLogger(__name__)
 
 
 class TransactionDataGenerator:
-    """Generate realistic synthetic transaction data for streaming"""
+    """
+    Generate realistic synthetic transaction data for streaming pipelines.
+    
+    This generator uses PySpark's rate source to create a continuous stream of
+    synthetic transaction data with realistic distributions for:
+    - User IDs and merchant IDs
+    - Transaction amounts (log-normal distribution)
+    - Currencies (USD, EUR, GBP, CAD, AUD)
+    - Merchant categories (restaurant, gas_station, grocery, etc.)
+    - Payment methods (credit_card, debit_card, digital_wallet, bank_transfer)
+    - IP addresses and device IDs
+    - Geographic locations (US-based coordinates)
+    - Card types (visa, mastercard, amex, discover)
+    
+    **Output**: Streaming DataFrame (isStreaming=True)
+    """
     
     def __init__(self, spark_session=None):
         """Initialize the data generator"""
@@ -100,7 +121,7 @@ class TransactionDataGenerator:
 
 # Example usage
 if __name__ == "__main__":
-    print("🧪 Testing TransactionDataGenerator...")
+    print("Testing TransactionDataGenerator...")
     
     generator = TransactionDataGenerator()
     streaming_df = generator.generate_transaction_data(

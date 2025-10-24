@@ -33,30 +33,38 @@ Databricks Lakebase PostgreSQL.
 
 **Usage:**
 ```python
-from utils.feature_engineering import AdvancedFeatureEngineering, FraudDetectionFeaturesProcessor
+from utils.feature_engineering import (
+    AdvancedFeatureEngineering,
+    FraudDetectionFeaturesProcessor,
+    get_fraud_detection_output_schema
+)
 
-# Stateless features
+# Step 1: Apply stateless features
 feature_engineer = AdvancedFeatureEngineering(spark)
-df_with_features = feature_engineer.apply_all_features(df_streaming)
+df_with_stateless = feature_engineer.apply_all_features(df_streaming)
 
-# Stateful fraud detection
-df_with_fraud = df_streaming \\
+# Step 2: Apply stateful fraud detection
+df_with_all_features = df_with_stateless \\
     .withWatermark("timestamp", "10 minutes") \\
     .groupBy("user_id") \\
     .transformWithStateInPandas(
         statefulProcessor=FraudDetectionFeaturesProcessor(),
-        outputStructType=fraud_output_schema,
-        outputMode="Append",
-        timeMode="None"
+        outputStructType=get_fraud_detection_output_schema(),
+        outputMode="Update",
+        timeMode="processingTime"
     )
+
+# Step 3: Write to Lakebase PostgreSQL
+query = df_with_all_features.writeStream \\
+    .foreachBatch(lambda df, id: lakebase.write_streaming_batch(df, id, "transaction_features")) \\
+    .start()
 ```
 
 Author: Databricks
 Date: October 2025
 """
 
-from typing import Iterator
-import pandas as pd
+import builtins
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
@@ -80,8 +88,8 @@ class AdvancedFeatureEngineering:
     - Device features (device type detection - optional)
     - Network features (IP classification, private/public - optional)
     
-    **Note**: For stateful features (velocity, behavioral patterns), use separate
-    streaming aggregation pipelines with windowed groupBy operations.
+    **Note**: For stateful features (velocity, behavioral patterns, fraud detection),
+    use FraudDetectionFeaturesProcessor with transformWithStateInPandas.
     """
     
     def __init__(self, spark_session=None):
@@ -538,7 +546,7 @@ class FraudDetectionFeaturesProcessor:
             ttlDurationMs=3600000 #1 hour
         )
     
-    def handleInputRows(self, key, rows: Iterator[pd.DataFrame], timer_values) -> Iterator[pd.DataFrame]:
+    def handleInputRows(self, key, rows, timer_values):
         """
         Process input rows for a given user and emit fraud features.
         
@@ -553,7 +561,7 @@ class FraudDetectionFeaturesProcessor:
         import pandas as pd
         import numpy as np
         
-        user_id, = key
+        user_id = key
         
         # Process each micro-batch
         for pdf in rows:
@@ -629,7 +637,7 @@ class FraudDetectionFeaturesProcessor:
                 # Amount-based features
                 prev_total_amount += current_amount
                 prev_avg_amount = prev_total_amount / prev_count
-                prev_max_amount = builtins.max(prev_max_amount, current_amount)
+                prev_max_amount = prev_max_amount if  prev_max_amount > current_amount else current_amount
                 
                 amount_vs_avg_ratio = current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
                 amount_vs_max_ratio = current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
@@ -655,7 +663,7 @@ class FraudDetectionFeaturesProcessor:
                 # Fraud indicators
                 is_rapid = 1 if trans_last_10min >= 5 else 0
                 is_impossible_travel = 1 if velocity_kmh is not None and velocity_kmh > 800 else 0
-                is_amount_anomaly = 1 if amount_zscore is not None and builtins.abs(amount_zscore) > 3 else 0
+                is_amount_anomaly = 1 if amount_zscore is not None and abs(amount_zscore) > 3 else 0
                 
                 # Calculate fraud score (0-100)
                 fraud_score = 0.0

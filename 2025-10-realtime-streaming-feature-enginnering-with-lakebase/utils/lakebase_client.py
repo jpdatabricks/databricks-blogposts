@@ -135,11 +135,15 @@ class LakebaseClient:
         This table combines BOTH stateless transaction features AND stateful fraud detection features
         in a single, comprehensive schema optimized for real-time ML model serving.
         
-        Use Cases:
-        - 01_streaming_features.ipynb: Stateless feature engineering (populates ~40 columns)
-        - 02_stateful_fraud_detection.ipynb: Stateful fraud detection (populates all ~70 columns)
+        Use Case:
+        - 01_streaming_fraud_detection_pipeline.ipynb: Writes all features to this table
         
         Table Schema (~70+ columns total):
+        
+        **Core Transaction Data (~12 columns):**
+        - transaction_id, timestamp, user_id, merchant_id, amount
+        - currency, merchant_category, payment_method, ip_address, device_id
+        - latitude, longitude, card_type
         
         **Stateless Features (~40 columns):**
         - Time-based: year, month, day, hour, cyclical encodings, business hour flags
@@ -149,11 +153,11 @@ class LakebaseClient:
         - Device: device type, has_device_id flag
         - Network: Tor/private IP detection, IP class
         
-        **Stateful Features (~25 columns):**
-        - Velocity: transaction counts in time windows
+        **Stateful Fraud Detection Features (~15 columns):**
+        - Velocity: transaction counts in time windows (10 min, 1 hour)
         - IP tracking: IP change detection and counts
         - Location anomalies: distance from last, velocity (km/h)
-        - Amount anomalies: ratios, z-scores
+        - Amount anomalies: ratios vs user history, z-scores
         - Fraud indicators: rapid transactions, impossible travel, amount anomalies
         - Composite: fraud_score (0-100), is_fraud_prediction (binary)
         
@@ -162,12 +166,11 @@ class LakebaseClient:
         
         Args:
             table_name: Name of the table to create (default: transaction_features)
-                       Common names: "transaction_features", "fraud_features"
         
         Benefits:
         - Single source of truth for all features
         - No joins needed for model inference (<10ms latency)
-        - Unified schema for all notebooks
+        - Unified schema for the streaming pipeline
         - Easier to maintain and evolve
         """
         create_table_sql = f"""
@@ -238,7 +241,7 @@ class LakebaseClient:
             
             -- ============================================
             -- STATEFUL FRAUD DETECTION FEATURES
-            -- (from FraudDetectorProcessor)
+            -- (from FraudDetectionFeaturesProcessor)
             -- ============================================
             
             -- Velocity features (stateful)

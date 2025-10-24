@@ -55,29 +55,31 @@ streaming_fraud_detection_pipeline.ipynb
 
 ```
 project/
-├── README.md                       ← This file
-├── 00_setup.ipynb                  ← Initial setup
-├── 01_streaming_fraud_detection_pipeline.ipynb     ← Streaming feature engineering demo
+├── README.md                                      ← This file
+├── .cursorrules                                   ← Project conventions (read first!)
+├── 00_setup.ipynb                                 ← Initial setup and table creation
+├── 01_streaming_fraud_detection_pipeline.ipynb    ← End-to-end streaming pipeline
 └── utils/
-    ├── lakebase_client.py          ← PostgreSQL client
-    ├── data_generator.py           ← Streaming data generator
-    └── feature_engineering.py      ← Feature engineering logic
+    ├── lakebase_client.py                         ← Lakebase PostgreSQL client
+    ├── data_generator.py                          ← Streaming data generator
+    └── feature_engineering.py                     ← Feature engineering (stateless + stateful)
 ```
 
 ## Documentation
 
 1. **[.cursorrules](.cursorrules)** - Project conventions and rules (read first!)
 2. **[00_setup.ipynb](00_setup.ipynb)** - Setup and configuration guide
-3. **[01_streaming_features.ipynb](01_streaming_features.ipynb)** - Feature engineering examples
+3. **[01_streaming_fraud_detection_pipeline.ipynb](01_streaming_fraud_detection_pipeline.ipynb)** - End-to-end pipeline demo
 
 ## Key Features
 
-- ✅ Real-time streaming feature engineering
-- ✅ <10ms query latency (Lakebase PostgreSQL)
-- ✅ ACID transactions for consistency
-- ✅ Standard SQL interface
-- ✅ Production-ready error handling
-- ✅ Connection pooling support
+- Real-time streaming feature engineering (PySpark Structured Streaming)
+- <10ms query latency (Lakebase PostgreSQL OLTP)
+- ACID transactions for data consistency
+- Standard SQL interface for feature serving
+- Stateless + stateful features (transformWithStateInPandas)
+- Production-ready error handling and retry logic
+- Unified table schema (~70+ columns)
 
 ## Usage Example
 
@@ -144,23 +146,25 @@ features = lakebase.read_features("""
 
 ## What This Project Does NOT Use
 
-❌ Delta Lake for feature storage
-❌ Databricks Feature Store API
-❌ File-based storage paths
-❌ Batch-only processing
+- Delta Lake for feature storage (uses Lakebase PostgreSQL instead)
+- Databricks Feature Store API (uses direct PostgreSQL connections)
+- File-based storage paths (uses OLTP database)
+- Batch-only processing (100% streaming-compatible code)
 
 ## What This Project DOES Use
 
-✅ Lakebase PostgreSQL (OLTP)
-✅ Streaming feature engineering
-✅ Real-time queries (<10ms)
-✅ SQL-based feature serving
+- Lakebase PostgreSQL (OLTP database, port 5432)
+- PySpark Structured Streaming (100% streaming)
+- transformWithStateInPandas for stateful processing (Spark 4.0+)
+- Real-time queries with <10ms latency
+- SQL-based feature serving
+- Unified table schema (transaction_features)
 
 ## Support
 
-- [Databricks Lakebase Docs](https://docs.databricks.com/lakebase/)
+- [Databricks Lakebase Docs](https://docs.databricks.com/en/lakehouse-architecture/lakebase/index.html)
 - [PostgreSQL Docs](https://www.postgresql.org/docs/)
-- [Project Conventions](PROJECT_CONVENTIONS.md)
+- [PySpark Structured Streaming](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
 
 ## License
 
