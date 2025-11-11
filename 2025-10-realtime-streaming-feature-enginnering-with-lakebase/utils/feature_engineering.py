@@ -197,7 +197,7 @@ class AdvancedFeatureEngineering:
         Returns:
             DataFrame (unchanged - no stateless location features added)
         """
-        if "location_lat" not in df.columns or "location_lon" not in df.columns:
+        if "latitude" not in df.columns or "longitude" not in df.columns:
             logger.warning("Location columns not found, skipping location features")
             return df
             
@@ -497,8 +497,8 @@ class FraudDetectionFeaturesProcessor:
         for row in row_list:
             current_time = row["timestamp"]
             current_ip = row["ip_address"]
-            current_lat = row["location_lat"]
-            current_lon = row["location_lon"]
+            current_lat = row["latitude"]
+            current_lon = row["longitude"]
             current_amount = row["amount"]
 
             # Update counters

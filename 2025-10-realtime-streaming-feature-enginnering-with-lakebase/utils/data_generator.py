@@ -78,8 +78,8 @@ class TransactionDataGenerator:
             .withColumn("payment_method", "string", values=["credit_card"]*45 + ["debit_card"]*35 + ["digital_wallet"]*15 + ["bank_transfer"]*5, random=True)
             .withColumn("ip_address", "string", expr="concat(cast(floor(rand() * 223 + 1) as int), '.', cast(floor(rand() * 255) as int), '.', cast(floor(rand() * 255) as int), '.', cast(floor(rand() * 255) as int))")
             .withColumn("device_id", "string", expr="concat('device_', lpad(cast(floor(rand() * (user_id_num * 2)) as string), 8, '0'))")
-            .withColumn("location_lat", "double", expr="25.0 + rand() * 24.0")
-            .withColumn("location_lon", "double", expr="-125.0 + rand() * 59.0")
+            .withColumn("latitude", "double", expr="25.0 + rand() * 24.0")
+            .withColumn("longitude", "double", expr="-125.0 + rand() * 59.0")
             .withColumn("card_type", "string", values=["visa"]*45 + ["mastercard"]*35 + ["amex"]*12 + ["discover"]*8, random=True)
         )
         
