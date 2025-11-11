@@ -104,9 +104,6 @@ class LakebaseClient:
                 conn.rollback()
             logger.error(f"Database error: {e}")
             raise
-        finally:
-            if conn:
-                conn.close()
     
     def test_connection(self) -> bool:
         """
@@ -298,7 +295,7 @@ class LakebaseClient:
             logger.error(f"Error creating feature table: {e}")
             raise
     
-    def write_streaming_batch(self, batch_df, batch_id: int, table_name: str = "transaction_features", 
+    def write_streaming_batch(self, batch_df, batch_id: int, table_name: str, 
                              batch_size: int = 10):
         """
         Write a streaming micro-batch to Lakebase
@@ -340,6 +337,40 @@ class LakebaseClient:
             logger.error(f"Error writing batch {batch_id}: {e}")
             raise
     
+
+    def write_streaming(self, data, columns: list, table_name: str, 
+                             batch_size: int = 1):
+        """
+        Write a streaming micro-batch to Lakebase
+        
+        This function is designed to be used with foreachBatch in PySpark Structured Streaming
+        
+        Args:
+            data: Values as tuple
+            columns: List of column names
+            table_name: Target table name
+        """
+        if data == None:
+            logger.warning(f"Empty DataFrame, skipping")
+            return
+        
+        insert_sql = f"""
+            INSERT INTO {table_name} ({','.join(columns)})
+            VALUES ({data})
+            ON CONFLICT (transaction_id) DO UPDATE SET
+            {','.join([f"{col}=EXCLUDED.{col}" for col in columns if col != 'transaction_id'])}
+        """
+        
+        print(insert_sql)
+
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(insert_sql, data)                
+                cursor.close()
+        except Exception as e:
+            logger.error(f"Error writing: {e}")
+            raise
     
     def read_features(self, query: str) -> pd.DataFrame:
         """
@@ -425,7 +456,8 @@ class LakebaseClient:
             logger.error(f"Error getting table stats: {e}")
             raise
 
-    def get_foreach_writer(self, creds, database: str = "databricks_postgres", table_name: str = "transaction_features",
+    def get_foreach_writer(self, table_name: str = "transaction_features",
+                    column_names: List[str] = None,       
                     conflict_columns: List[str] = None,
                     batch_size: int = 10):
         """
@@ -448,8 +480,9 @@ class LakebaseClient:
         
         return LakebaseForeachWriter(
             creds=self.get_credentials(),
-            database=database,
+            database=self.database,
             table_name=table_name,
+            column_names = column_names,
             conflict_columns=conflict_columns,
             batch_size=batch_size
         )        
@@ -511,7 +544,7 @@ class LakebaseForeachWriter:
         query = df.writeStream.foreach(writer).start()
     """
     
-    def __init__(self, creds, database, table_name: str, 
+    def __init__(self, creds, database, table_name: str, column_names: List[str],
                  conflict_columns: List[str], batch_size: int = 100):
         """
         Initialize ForeachWriter
@@ -520,12 +553,14 @@ class LakebaseForeachWriter:
             creds: lakebase credentials
             database: database name
             table_name: Target table name
+            column_names: Columns to be inserted or updated
             conflict_columns: Columns for ON CONFLICT clause (e.g., ["transaction_id"])
             batch_size: Number of rows to accumulate before writing
         """
         self.creds = creds
         self.database = database
         self.table_name = table_name
+        self.column_names = column_names
         self.conflict_columns = conflict_columns
         self.batch_size = batch_size
         self.max_retries = 3
@@ -533,8 +568,7 @@ class LakebaseForeachWriter:
         # Per-partition state
         self.conn = None
         self.cursor = None
-        self.current_batch = []
-        self.column_names = None
+        self.current_batch = []        
     
     def open(self, partition_id, epoch_id):
         """Open connection for this partition"""
@@ -558,16 +592,14 @@ class LakebaseForeachWriter:
             logger.error(f"Error opening connection for partition {partition_id}: {e}")
             return False
     
-    def process(self, row):
+    def process(self, row_tuple):
         """Process a single row"""
         try:
             # Get column names from first row
             if self.column_names is None:
-                self.column_names = row.asDict().keys()
+                logger.error(f"Error missing column names")
             
-            # Convert row to values tuple
-            values = tuple(row[col] for col in self.column_names)
-            self.current_batch.append(values)
+            self.current_batch.append(row_tuple)
             
             # Flush when batch is full
             if len(self.current_batch) >= self.batch_size:

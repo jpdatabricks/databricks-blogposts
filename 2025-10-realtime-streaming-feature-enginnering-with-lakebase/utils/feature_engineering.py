@@ -68,7 +68,9 @@ import builtins
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
+from typing import Iterator
 import logging
+import builtins
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -469,293 +471,250 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2):
 
 class FraudDetectionFeaturesProcessor:
     """
-    StatefulProcessor for real-time fraud detection using transformWithStateInPandas.
-    
-    This processor maintains consolidated state per user to detect fraud patterns including:
-    - Transaction velocity (time windows)
-    - IP address changes
-    - Geographic anomalies (impossible travel)
-    - Amount-based anomalies
-    
-    **Requirements:**
-    - Apache Spark 4.0+ (for transformWithStateInPandas support)
-    - PySpark Structured Streaming
-    
-    **State Management:**
-    Uses a single consolidated ValueState object containing:
-    - Transaction count
-    - Last transaction details (timestamp, IP, location)
-    - IP change count
-    - Amount statistics (total, avg, max)
-    - Recent transaction history
-    
-    **Fraud Score Calculation (0-100 points):**
-    - Rapid transactions (5+ in 10 min): +20 points
-    - Impossible travel (>800 km/h): +30 points
-    - Amount anomaly (z-score > 3): +25 points
-    - Frequent IP changes (5+ total): +15 points
-    - High velocity (10+ in 1 hour): +10 points
-    
-    **Fraud Prediction:** Score >= 50 triggers fraud flag
+    Stateful processor for real‑time fraud detection using
+    ``transformWithStateInPandas``.
+
+    The processor maintains a single consolidated state per user and
+    computes a rich set of fraud‑related features, including:
+    * Transaction velocity (last hour / last 10 min)
+    * IP address change tracking
+    * Geographic anomalies (impossible travel)
+    * Amount‑based anomalies (z‑score, ratio to user avg/max)
+
+    The implementation has been streamlined:
+    * Uses ``sorted`` directly on the input iterator to avoid an extra
+      ``list`` allocation and explicit ``list.sort`` call.
+    * Caps the recent‑transaction buffers to 50 entries to bound state size.
+    * Imports ``numpy`` locally to avoid a module‑level import that is unused
+      elsewhere.
+    * Minor readability improvements while preserving the original logic.
     """
-    
+
     def init(self, handle) -> None:
         """
-        Initialize the stateful processor with a single consolidated state variable.
-        
-        Consolidated state includes:
-        - Transaction count
-        - Last transaction details (timestamp, IP, location)
-        - IP change count
-        - Amount statistics (total, avg, max)
-        - Recent transaction times (up to 50)
-        - Recent transaction amounts (up to 50)
-        
-        Args:
-            handle: StatefulProcessorHandle for state management
+        Initialise the processor with a single consolidated ``ValueState``.
         """
         self.handle = handle
-        
-        # Define comprehensive state schema - consolidates ALL state into one object
+
+        # Consolidated state schema (one object per user)
         state_schema = StructType([
-            # Transaction count
             StructField("transaction_count", IntegerType(), False),
-            
-            # Last transaction details
             StructField("last_timestamp", TimestampType(), True),
             StructField("last_ip_address", StringType(), True),
             StructField("last_latitude", DoubleType(), True),
             StructField("last_longitude", DoubleType(), True),
-            
-            # IP change tracking
             StructField("ip_change_count", IntegerType(), False),
-            
-            # Amount statistics
             StructField("total_amount", DoubleType(), False),
             StructField("avg_amount", DoubleType(), False),
             StructField("max_amount", DoubleType(), False),
-            
-            # Recent transaction history (bounded to 50 each)
             StructField("recent_timestamps", ArrayType(TimestampType()), False),
             StructField("recent_amounts", ArrayType(DoubleType()), False)
         ])
-        
+
         self.user_state = handle.getValueState(
-            "user_fraud_state",  # Single state variable name
+            "user_fraud_state",
             state_schema,
-            ttlDurationMs=3600000 #1 hour
+            ttlDurationMs=3600000  # 1 hour TTL
         )
-    
-    def handleInputRows(self, key, rows, timer_values):
+
+    def handleInputRows(self, key, rows, timer_values) -> Iterator[Row]:
         """
-        Process input rows for a given user and emit fraud features.
-        
-        Args:
-            key: user_id
-            rows: Iterator of Pandas DataFrames containing transactions for this user
-            timer_values: Timer values (not used in this implementation)
-        
-        Yields:
-            pd.DataFrame: Enriched transactions with fraud features
+        Process a batch of transactions for a single ``user_id`` and emit
+        fraud‑detection features.
         """
-        import pandas as pd
-        import numpy as np
+        import numpy as np  # Local import – only needed here
         
+
         user_id, = key
-        
-        # Process each micro-batch
-        for pdf in rows:
-            if pdf.empty:
-                continue
-            
-            # Sort by timestamp
-            pdf = pdf.sort_values('timestamp')
-            
-            # Retrieve existing state (single consolidated object)
-            if self.user_state.exists():
-                state = self.user_state.get()
-                prev_count = state[0]  # transaction_count
-                prev_last_time = state[1]  # last_timestamp
-                prev_ip = state[2]  # last_ip_address
-                prev_lat = state[3]  # last_latitude
-                prev_lon = state[4]  # last_longitude
-                prev_ip_changes = state[5]  # ip_change_count
-                prev_total_amount = state[6]  # total_amount
-                prev_avg_amount = state[7]  # avg_amount
-                prev_max_amount = state[8]  # max_amount
-                prev_times = list(state[9]) if state[9] else []  # recent_timestamps
-                prev_amounts = list(state[10]) if state[10] else []  # recent_amounts
+
+        # Sort incoming rows by timestamp without an intermediate mutable list
+        row_list = sorted(rows, key=lambda r: r["timestamp"])
+        if not row_list:
+            return
+
+        # Load existing state or initialise defaults
+        if self.user_state.exists():
+            (
+                prev_count,
+                prev_last_time,
+                prev_ip,
+                prev_lat,
+                prev_lon,
+                prev_ip_changes,
+                prev_total_amount,
+                prev_avg_amount,
+                prev_max_amount,
+                prev_times,
+                prev_amounts,
+            ) = self.user_state.get()
+            prev_times = list(prev_times) if prev_times else []
+            prev_amounts = list(prev_amounts) if prev_amounts else []
+        else:
+            prev_count = 0
+            prev_last_time = None
+            prev_ip = None
+            prev_lat = None
+            prev_lon = None
+            prev_ip_changes = 0
+            prev_total_amount = 0.0
+            prev_avg_amount = 0.0
+            prev_max_amount = 0.0
+            prev_times = []
+            prev_amounts = []
+
+        results = []
+
+        for row in row_list:
+            current_time = row["timestamp"]
+            current_ip = row["ip_address"]
+            current_lat = row["location_lat"]
+            current_lon = row["location_lon"]
+            current_amount = row["amount"]
+
+            # Update counters
+            prev_count += 1
+
+            # Time delta since previous transaction
+            if prev_last_time is not None:
+                # Ensure both datetimes are offset-naive
+                if hasattr(current_time, 'tzinfo') and current_time.tzinfo is not None:
+                    current_time = current_time.replace(tzinfo=None)
+                if hasattr(prev_last_time, 'tzinfo') and prev_last_time.tzinfo is not None:
+                    prev_last_time = prev_last_time.replace(tzinfo=None)
+                time_diff = (current_time - prev_last_time).total_seconds()
             else:
-                # Initialize state for new user
-                prev_count = 0
-                prev_last_time = None
-                prev_ip = None
-                prev_lat = None
-                prev_lon = None
-                prev_ip_changes = 0
-                prev_total_amount = 0.0
-                prev_avg_amount = 0.0
-                prev_max_amount = 0.0
-                prev_times = []
-                prev_amounts = []
+                time_diff = None    
             
-            # Process each transaction
-            results = []
-            
-            for idx, row in pdf.iterrows():
-                current_time = row['timestamp']
-                current_ip = row['ip_address']
-                current_lat = row['location_lat']
-                current_lon = row['location_lon']
-                current_amount = row['amount']
-                
-                # Update transaction count
-                prev_count += 1
-                
-                # Calculate time-based features
-                if prev_last_time is not None:
-                    time_diff = (current_time - prev_last_time).total_seconds()
-                else:
-                    time_diff = None
-                
-                # IP change detection
-                ip_changed = 0
-                if prev_ip is not None and current_ip != prev_ip:
-                    ip_changed = 1
-                    prev_ip_changes += 1
-                
-                # Geographic distance calculation
-                distance_km = None
-                velocity_kmh = None
-                if prev_lat is not None and prev_lon is not None:
-                    distance_km = calculate_haversine_distance(
-                        prev_lat, prev_lon, current_lat, current_lon
-                    )
-                    if distance_km is not None and time_diff is not None and time_diff > 0:
-                        velocity_kmh = (distance_km / time_diff) * 3600
-                
-                # Amount-based features
-                prev_total_amount += current_amount
-                prev_avg_amount = prev_total_amount / prev_count
-                prev_max_amount = builtins.max(prev_max_amount, current_amount)
-                
-                amount_vs_avg_ratio = current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
-                amount_vs_max_ratio = current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
-                
-                # Z-score calculation
-                amount_zscore = None
-                if len(prev_amounts) >= 3:
-                    amounts_std = np.std(prev_amounts)
-                    if amounts_std > 0:
-                        amount_zscore = (current_amount - prev_avg_amount) / amounts_std
-                
-                # Update recent transactions
-                prev_times.append(current_time)
-                prev_amounts.append(current_amount)
-                
-                # Count transactions in time windows
-                one_hour_ago = current_time - timedelta(hours=1)
-                ten_min_ago = current_time - timedelta(minutes=10)
-                
-                trans_last_hour = builtins.sum(1 for t in prev_times if t >= one_hour_ago)
-                trans_last_10min = builtins.sum(1 for t in prev_times if t >= ten_min_ago)
-                
-                # Fraud indicators
-                is_rapid = 1 if trans_last_10min >= 5 else 0
-                is_impossible_travel = 1 if velocity_kmh is not None and velocity_kmh > 800 else 0
-                is_amount_anomaly = 1 if amount_zscore is not None and builtins.abs(amount_zscore) > 3 else 0
-                
-                # Calculate fraud score (0-100)
-                fraud_score = 0.0
-                if is_rapid:
-                    fraud_score += 20
-                if is_impossible_travel:
-                    fraud_score += 30
-                if is_amount_anomaly:
-                    fraud_score += 25
-                if prev_ip_changes >= 5:
-                    fraud_score += 15
-                if trans_last_hour >= 10:
-                    fraud_score += 10
-                fraud_score = builtins.min(fraud_score, 100.0)
-                
-                # Fraud prediction
-                is_fraud_pred = 1 if fraud_score >= 50 else 0
-                
-                # Append result
-                results.append({
-                    'transaction_id': row['transaction_id'],
-                    'user_id': user_id,
-                    'timestamp': current_time,
-                    'amount': current_amount,
-                    'merchant_id': row['merchant_id'],
-                    'ip_address': current_ip,
-                    'latitude': current_lat,
-                    'longitude': current_lon,
-                    'user_transaction_count': prev_count,
-                    'transactions_last_hour': trans_last_hour,
-                    'transactions_last_10min': trans_last_10min,
-                    'ip_changed': ip_changed,
-                    'ip_change_count_total': prev_ip_changes,
-                    'distance_from_last_km': distance_km,
-                    'velocity_kmh': velocity_kmh,
-                    'amount_vs_user_avg_ratio': amount_vs_avg_ratio,
-                    'amount_vs_user_max_ratio': amount_vs_max_ratio,
-                    'amount_zscore': amount_zscore,
-                    'seconds_since_last_transaction': time_diff,
-                    'is_rapid_transaction': is_rapid,
-                    'is_impossible_travel': is_impossible_travel,
-                    'is_amount_anomaly': is_amount_anomaly,
-                    'fraud_score': fraud_score,
-                    'is_fraud_prediction': is_fraud_pred
-                })
-                
-                # Update state for next transaction
-                prev_last_time = current_time
-                prev_ip = current_ip
-                prev_lat = current_lat
-                prev_lon = current_lon
-            
-            # Update SINGLE consolidated state object (atomic update)
-            self.user_state.update((
-                prev_count,           # transaction_count
-                prev_last_time,       # last_timestamp
-                prev_ip,              # last_ip_address
-                prev_lat,             # last_latitude
-                prev_lon,             # last_longitude
-                prev_ip_changes,      # ip_change_count
-                prev_total_amount,    # total_amount
-                prev_avg_amount,      # avg_amount
-                prev_max_amount,      # max_amount
-                prev_times,           # recent_timestamps
-                prev_amounts          # recent_amounts
-            ))
-            
-            # Yield results
-            if results:
-                yield pd.DataFrame(results)
-    
-    def handleExpiredTimer(self, key, timer_values, expired_timer_info):
-        """
-        Handle expired timers (not used in this implementation).
-        
-        Args:
-            key: user_id
-            timer_values: Timer values
-            expired_timer_info: Information about expired timer
-        
-        Yields:
-            pd.DataFrame: Empty DataFrame
-        """
-        import pandas as pd
-        # No timer logic in this basic implementation
-        yield pd.DataFrame()
-    
+            # IP change detection
+            ip_changed = 0
+            if prev_ip is not None and current_ip != prev_ip:
+                ip_changed = 1
+                prev_ip_changes += 1
+
+            # Geographic distance & velocity
+            distance_km = None
+            velocity_kmh = None
+            if prev_lat is not None and prev_lon is not None:
+                distance_km = calculate_haversine_distance(
+                    prev_lat, prev_lon, current_lat, current_lon
+                )
+                if distance_km is not None and time_diff and time_diff > 0:
+                    velocity_kmh = (distance_km / time_diff) * 3600
+
+            # Amount statistics
+            prev_total_amount += current_amount
+            prev_avg_amount = prev_total_amount / prev_count
+            prev_max_amount = builtins.max(prev_max_amount, current_amount)
+
+            amount_vs_avg_ratio = (
+                current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
+            )
+            amount_vs_max_ratio = (
+                current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
+            )
+
+            # Z‑score (requires at least 3 prior amounts)
+            amount_zscore = None
+            if len(prev_amounts) >= 3:
+                std = np.std(prev_amounts)
+                if std > 0:
+                    amount_zscore = (current_amount - prev_avg_amount) / std
+
+            # Update recent‑transaction buffers (capped at 50)
+            prev_times.append(current_time)
+            prev_amounts.append(current_amount)
+            if len(prev_times) > 50:
+                prev_times = prev_times[-50:]
+                prev_amounts = prev_amounts[-50:]
+
+            # Transaction counts in sliding windows
+            one_hour_ago = current_time - timedelta(hours=1)
+            ten_min_ago = current_time - timedelta(minutes=10)
+
+            trans_last_hour = builtins.sum(1 for t in prev_times if t >= one_hour_ago)
+            trans_last_10min = builtins.sum(1 for t in prev_times if t >= ten_min_ago)
+
+            # Fraud indicators
+            is_rapid = 1 if trans_last_10min >= 5 else 0
+            is_impossible_travel = (
+                1 if velocity_kmh is not None and velocity_kmh > 800 else 0
+            )
+            is_amount_anomaly = (
+                1 if amount_zscore is not None and builtins.abs(amount_zscore) > 3 else 0
+            )
+
+            # Fraud score (capped at 100)
+            fraud_score = 0.0
+            fraud_score += 20 if is_rapid else 0
+            fraud_score += 30 if is_impossible_travel else 0
+            fraud_score += 25 if is_amount_anomaly else 0
+            fraud_score += 15 if prev_ip_changes >= 5 else 0
+            fraud_score += 10 if trans_last_hour >= 10 else 0
+            fraud_score = builtins.min(fraud_score, 100.0)
+
+            is_fraud_pred = 1 if fraud_score >= 50 else 0
+
+            # Assemble output row
+            results.append(
+                Row(
+                    transaction_id=row["transaction_id"],
+                    user_id=user_id,
+                    timestamp=current_time,
+                    amount=current_amount,
+                    merchant_id=row["merchant_id"],
+                    ip_address=current_ip,
+                    latitude=current_lat,
+                    longitude=current_lon,
+                    user_transaction_count=prev_count,
+                    transactions_last_hour=trans_last_hour,
+                    transactions_last_10min=trans_last_10min,
+                    ip_changed=ip_changed,
+                    ip_change_count_total=prev_ip_changes,
+                    distance_from_last_km=distance_km,
+                    velocity_kmh=velocity_kmh,
+                    amount_vs_user_avg_ratio=amount_vs_avg_ratio,
+                    amount_vs_user_max_ratio=amount_vs_max_ratio,
+                    amount_zscore=amount_zscore,
+                    seconds_since_last_transaction=time_diff,
+                    is_rapid_transaction=is_rapid,
+                    is_impossible_travel=is_impossible_travel,
+                    is_amount_anomaly=is_amount_anomaly,
+                    fraud_score=fraud_score,
+                    is_fraud_prediction=is_fraud_pred,
+                )
+            )
+
+            # Update state for next iteration
+            prev_last_time = current_time
+            prev_ip = current_ip
+            prev_lat = current_lat
+            prev_lon = current_lon
+
+        # Persist consolidated state (atomic update)
+        self.user_state.update(
+            (
+                prev_count,
+                prev_last_time,
+                prev_ip,
+                prev_lat,
+                prev_lon,
+                prev_ip_changes,
+                prev_total_amount,
+                prev_avg_amount,
+                prev_max_amount,
+                prev_times,
+                prev_amounts,
+            )
+        )
+
+        # Emit results
+        for row in results:
+            yield row
+
     def close(self) -> None:
-        """
-        Perform cleanup operations (none needed).
-        """
+        """No cleanup required."""
         pass
+    
 
 
 if __name__ == "__main__":
