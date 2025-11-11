@@ -31,6 +31,60 @@ print("Starting process...")
 - Emojis MAY be used in documentation files (README.md, etc.) for visual clarity
 - Emojis MAY be used ONLY if the user explicitly requests them
 
+## PRIMARY RULE: No .cursorrules in User Documentation
+
+**CRITICAL: Do NOT reference `.cursorrules` in user-facing documentation.**
+
+### What This Means:
+- ❌ NO `.cursorrules` references in README.md
+- ❌ NO `.cursorrules` links in project documentation
+- ❌ NO `.cursorrules` in file structure diagrams shown to users
+- ❌ NO `.cursorrules` references in Python module docstrings
+- ❌ NO `.cursorrules` references in notebook markdown cells
+- ✅ `.cursorrules` is for AI code generation context ONLY
+
+### Why:
+- `.cursorrules` is an internal AI tool configuration file
+- End users don't need to know about AI assistant instructions
+- It clutters documentation with irrelevant implementation details
+- Users should focus on actual code and notebooks, not AI context
+
+### Examples:
+
+**BAD (README.md):**
+```markdown
+See [`.cursorrules`](.cursorrules) for project conventions.
+
+File structure:
+├── .cursorrules ← Project conventions
+```
+
+**GOOD (README.md):**
+```markdown
+Project conventions are documented in code comments and notebooks.
+
+File structure:
+├── 00_setup.ipynb ← Setup guide
+```
+
+**BAD (Python docstring):**
+```python
+"""
+See .cursorrules for project conventions.
+"""
+```
+
+**GOOD (Python docstring):**
+```python
+"""
+IMPORTANT: "Lakebase" refers to PostgreSQL (port 5432).
+"""
+```
+
+### When to Mention .cursorrules:
+- NEVER in user-facing documentation
+- ONLY in internal development discussions if absolutely necessary
+
 ## PRIMARY RULE: Lakebase Definition
 
 **CRITICAL: In this project, "Lakebase" ALWAYS refers to:**

@@ -54,10 +54,9 @@ df_with_all_features = df_with_stateless \\
         timeMode="processingTime"
     )
 
-# Step 3: Write to Lakebase PostgreSQL
-query = df_with_all_features.writeStream \\
-    .foreachBatch(lambda df, id: lakebase.write_streaming_batch(df, id, "transaction_features")) \\
-    .start()
+# Step 3: Write to Lakebase PostgreSQL using ForeachWriter
+writer = lakebase.get_foreach_writer(column_names=df_with_all_features.schema.names)
+query = df_with_all_features.writeStream.foreach(writer).start()
 ```
 
 Author: Databricks
@@ -70,7 +69,6 @@ from pyspark.sql.functions import *
 from pyspark.sql.types import *
 from typing import Iterator
 import logging
-import builtins
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -356,39 +354,6 @@ class AdvancedFeatureEngineering:
         logger.info("Streaming feature engineering completed!")
         return df_features
     
-    def write_features_to_lakebase(self, df, lakebase_client, table_name="transaction_features",
-                                  checkpoint_location=None, trigger_interval="30 seconds"):
-        """
-        Write streaming features to Lakebase PostgreSQL database
-        
-        Args:
-            df: Streaming DataFrame with features
-            lakebase_client: LakebaseClient instance for PostgreSQL connection
-            table_name: Target table name in Lakebase
-            checkpoint_location: Checkpoint location for streaming
-            trigger_interval: Trigger interval for micro-batches
-            
-        Returns:
-            StreamingQuery object
-        """
-        if checkpoint_location is None:
-            checkpoint_location = f"/tmp/feature_engineering_checkpoint/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        logger.info(f"Writing features to Lakebase PostgreSQL: {table_name}")
-        logger.info(f"Checkpoint location: {checkpoint_location}")
-        
-        # Use foreachBatch to write each micro-batch to PostgreSQL
-        def write_batch_to_postgres(batch_df, batch_id):
-            lakebase_client.write_streaming_batch(batch_df, batch_id, table_name)
-        
-        return df.writeStream \
-            .foreachBatch(write_batch_to_postgres) \
-            .option("checkpointLocation", checkpoint_location) \
-            .trigger(processingTime=trigger_interval) \
-            .start()
-    
-    
-
 
 # =============================================================================
 # STATEFUL FRAUD DETECTION PROCESSOR
@@ -399,10 +364,14 @@ def get_fraud_detection_output_schema():
     Get the output schema for FraudDetectionFeaturesProcessor.
     
     This schema defines the structure of fraud detection features that will be
-    emitted by transformWithStateInPandas and written to the fraud_features table.
+    emitted by transformWithState and written to the transaction_features table.
+    
+    **Note**: This schema only includes fields output by the stateful processor.
+    Stateless features (from AdvancedFeatureEngineering) are NOT included here
+    as they are handled separately in the pipeline.
     
     Returns:
-        StructType: Complete output schema with core transaction fields and fraud features
+        StructType: Output schema with core transaction fields and stateful fraud features
     """
     return StructType([
         # Core transaction fields
@@ -714,8 +683,3 @@ class FraudDetectionFeaturesProcessor:
     def close(self) -> None:
         """No cleanup required."""
         pass
-    
-
-
-if __name__ == "__main__":
-    main()

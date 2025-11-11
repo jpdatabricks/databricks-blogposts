@@ -49,10 +49,13 @@ class LakebaseClient:
         
     def get_credentials(self):
         """
-        Get Databricks Lakebase credentials
+        Get Databricks Lakebase credentials using Databricks SDK
         
-        Yields:
-            lakebase database credentials
+        Uses WorkspaceClient to automatically generate temporary credentials
+        for connecting to the Lakebase PostgreSQL instance.
+        
+        Returns:
+            dict: Dictionary containing host, port, user, and password
         """
         conn = None
         try:
@@ -79,10 +82,16 @@ class LakebaseClient:
     @contextmanager
     def get_connection(self):
         """
-        Context manager for database connections
+        Context manager for PostgreSQL database connections
+        
+        Automatically handles connection lifecycle: opens connection, yields it,
+        commits on success, or rolls back on error.
         
         Yields:
-            psycopg2 connection object
+            psycopg2.connection: Active PostgreSQL connection object
+            
+        Raises:
+            Exception: If connection or query execution fails
         """
         conn = None
         try:
@@ -188,7 +197,7 @@ class LakebaseClient:
             longitude DOUBLE PRECISION,
             card_type VARCHAR(20),
             
-            -- Time-based features (stateless - from FeatureEngineer)
+            -- Time-based features (stateless - from AdvancedFeatureEngineering)
             year INTEGER,
             month INTEGER,
             day INTEGER,
@@ -209,7 +218,7 @@ class LakebaseClient:
             month_sin DOUBLE PRECISION,
             month_cos DOUBLE PRECISION,
             
-            -- Amount-based features (stateless - from FeatureEngineer)
+            -- Amount-based features (stateless - from AdvancedFeatureEngineering)
             amount_log DOUBLE PRECISION,
             amount_sqrt DOUBLE PRECISION,
             amount_squared DOUBLE PRECISION,
@@ -217,20 +226,20 @@ class LakebaseClient:
             is_round_amount INTEGER,
             is_exact_amount INTEGER,
             
-            -- Merchant features (stateless - from FeatureEngineer)
+            -- Merchant features (stateless - from AdvancedFeatureEngineering)
             merchant_risk_score DOUBLE PRECISION,
             merchant_category_risk VARCHAR(20),
             
-            -- Location features (stateless - from FeatureEngineer)
+            -- Location features (stateless - from AdvancedFeatureEngineering)
             is_high_risk_location INTEGER,
             is_international INTEGER,
             location_region VARCHAR(20),
             
-            -- Device features (stateless - from FeatureEngineer)
+            -- Device features (stateless - from AdvancedFeatureEngineering)
             has_device_id INTEGER,
             device_type VARCHAR(20),
             
-            -- Network features (stateless - from FeatureEngineer)
+            -- Network features (stateless - from AdvancedFeatureEngineering)
             is_tor_ip INTEGER,
             is_private_ip INTEGER,
             ip_class VARCHAR(20),
@@ -298,15 +307,20 @@ class LakebaseClient:
     def write_streaming_batch(self, batch_df, batch_id: int, table_name: str, 
                              batch_size: int = 10):
         """
-        Write a streaming micro-batch to Lakebase
+        Write a streaming micro-batch to Lakebase PostgreSQL
         
-        This function is designed to be used with foreachBatch in PySpark Structured Streaming
+        This method is designed to be used with foreachBatch in PySpark Structured Streaming.
+        It converts a Spark DataFrame to Pandas, then uses PostgreSQL's execute_batch for
+        efficient bulk inserts with UPSERT logic (INSERT ... ON CONFLICT DO UPDATE).
         
         Args:
-            batch_df: PySpark DataFrame (micro-batch)
-            batch_id: Batch ID from streaming query
-            table_name: Target table name
-            batch_size: Number of rows per batch for insert
+            batch_df: PySpark DataFrame (micro-batch from streaming query)
+            batch_id: Batch ID from streaming query (for logging)
+            table_name: Target table name in Lakebase PostgreSQL
+            batch_size: Number of rows per batch for execute_batch (default: 10)
+            
+        Raises:
+            Exception: If database write fails
         """
         logger.info(f"Processing batch {batch_id}...")
         
@@ -337,41 +351,6 @@ class LakebaseClient:
             logger.error(f"Error writing batch {batch_id}: {e}")
             raise
     
-
-    def write_streaming(self, data, columns: list, table_name: str, 
-                             batch_size: int = 1):
-        """
-        Write a streaming micro-batch to Lakebase
-        
-        This function is designed to be used with foreachBatch in PySpark Structured Streaming
-        
-        Args:
-            data: Values as tuple
-            columns: List of column names
-            table_name: Target table name
-        """
-        if data == None:
-            logger.warning(f"Empty DataFrame, skipping")
-            return
-        
-        insert_sql = f"""
-            INSERT INTO {table_name} ({','.join(columns)})
-            VALUES ({data})
-            ON CONFLICT (transaction_id) DO UPDATE SET
-            {','.join([f"{col}=EXCLUDED.{col}" for col in columns if col != 'transaction_id'])}
-        """
-        
-        print(insert_sql)
-
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(insert_sql, data)                
-                cursor.close()
-        except Exception as e:
-            logger.error(f"Error writing: {e}")
-            raise
-    
     def read_features(self, query: str) -> pd.DataFrame:
         """
         Read features from Lakebase using SQL query
@@ -394,15 +373,21 @@ class LakebaseClient:
     def get_recent_features(self, user_id: str, hours: int = 24,
                            table_name: str = "transaction_features") -> pd.DataFrame:
         """
-        Get recent features for a user
+        Get recent features for a specific user within a time window
+        
+        Convenience method for querying features for ML inference. Returns all
+        features for a user within the specified time window, ordered by timestamp.
         
         Args:
             user_id: User ID to query
-            hours: Number of hours to look back
-            table_name: Table name
+            hours: Number of hours to look back (default: 24)
+            table_name: Table name (default: "transaction_features")
             
         Returns:
-            Pandas DataFrame with features
+            Pandas DataFrame with features, ordered by timestamp descending
+            
+        Example:
+            features = lakebase.get_recent_features("user_000001", hours=6)
         """
         query = f"""
             SELECT *
@@ -461,18 +446,23 @@ class LakebaseClient:
                     conflict_columns: List[str] = None,
                     batch_size: int = 10):
         """
-        Create a ForeachWriter for per-partition streaming writes
+        Create a ForeachWriter for per-partition streaming writes to Lakebase
+        
+        This method returns a LakebaseForeachWriter instance configured for use
+        with Spark's writeStream.foreach() API. The writer handles per-partition
+        connections and batched UPSERT operations.
         
         Args:
-            table_name: Target table name
+            table_name: Target table name (default: "transaction_features")
+            column_names: List of column names to insert/update
             conflict_columns: Columns for ON CONFLICT (default: ["transaction_id"])
-            batch_size: Rows to accumulate before writing
+            batch_size: Rows to accumulate before writing (default: 10)
             
         Returns:
             LakebaseForeachWriter instance
             
         Example:
-            writer = lakebase_client.get_foreach_writer()
+            writer = lakebase.get_foreach_writer(column_names=df.schema.names)
             query = df.writeStream.foreach(writer).start()
         """
         if conflict_columns is None:
@@ -487,50 +477,6 @@ class LakebaseClient:
             batch_size=batch_size
         )        
 
-
-def get_lakebase_client_from_secrets(spark=None) -> LakebaseClient:
-    """
-    Create a LakebaseClient using Databricks secrets
-    
-    Args:
-        spark: SparkSession (for accessing dbutils)
-        
-    Returns:
-        Initialized LakebaseClient
-    """
-    try:
-        # Try to get dbutils
-        if spark:
-            dbutils = spark._jvm.com.databricks.backend.daemon.driver.DriverLocal.toScalaDriverLocal(
-                spark._jvm.org.apache.spark.TaskContext.get()
-            ).driverLocal().dbutils()
-        else:
-            from pyspark.dbutils import DBUtils
-            from pyspark.sql import SparkSession
-            spark = SparkSession.getActiveSession()
-            dbutils = DBUtils(spark)
-        
-        # Get secrets
-        host = dbutils.secrets.get(scope="lakebase", key="host")
-        password = dbutils.secrets.get(scope="lakebase", key="token")
-        database = dbutils.secrets.get(scope="lakebase", key="database")
-        
-        return LakebaseClient(
-            host=host,
-            port=5432,
-            database=database,
-            user="token",
-            password=password
-        )
-    except Exception as e:
-        logger.error(f"Error creating client from secrets: {e}")
-        logger.info("Falling back to manual configuration")
-        raise
-
-
-
-
-# Add this class to lakebase_client.py
 
 class LakebaseForeachWriter:
     """
@@ -571,7 +517,19 @@ class LakebaseForeachWriter:
         self.current_batch = []        
     
     def open(self, partition_id, epoch_id):
-        """Open connection for this partition"""
+        """
+        Open database connection for this partition and epoch
+        
+        Called once per partition at the start of each micro-batch. Opens a new
+        PostgreSQL connection with autocommit=False for transactional safety.
+        
+        Args:
+            partition_id: Partition ID
+            epoch_id: Streaming epoch ID
+            
+        Returns:
+            bool: True if connection successful, False otherwise
+        """
         try:
             logger.info(f"Opening connection for partition {partition_id}, epoch {epoch_id}")
             
@@ -593,9 +551,20 @@ class LakebaseForeachWriter:
             return False
     
     def process(self, row_tuple):
-        """Process a single row"""
+        """
+        Process a single row from the streaming query
+        
+        Accumulates rows in a buffer. When the buffer reaches batch_size,
+        triggers an UPSERT batch write to PostgreSQL.
+        
+        Args:
+            row_tuple: Tuple containing row values
+            
+        Raises:
+            Exception: If row processing fails
+        """
         try:
-            # Get column names from first row
+            # Validate column names
             if self.column_names is None:
                 logger.error(f"Error missing column names")
             
@@ -609,7 +578,16 @@ class LakebaseForeachWriter:
             raise
     
     def close(self, error):
-        """Close connection and flush remaining batch"""
+        """
+        Close connection and flush remaining batch
+        
+        Called once per partition at the end of the micro-batch. Flushes any
+        remaining rows, commits or rolls back based on error status, and
+        closes the database connection.
+        
+        Args:
+            error: Exception if processing failed, None otherwise
+        """
         try:
             if error is None and self.current_batch:
                 self._execute_batch()
@@ -632,7 +610,13 @@ class LakebaseForeachWriter:
                     pass
     
     def _execute_batch(self):
-        """Execute the accumulated batch with retry logic"""
+        """
+        Execute the accumulated batch with retry logic
+        
+        Performs UPSERT operation (INSERT ... ON CONFLICT DO UPDATE) on all
+        accumulated rows. Uses execute_batch for efficient bulk operations.
+        Includes exponential backoff retry logic for transient errors.
+        """
         if not self.current_batch:
             return
         
@@ -664,7 +648,15 @@ class LakebaseForeachWriter:
         self._with_retry(_execute)
     
     def _with_retry(self, fn):
-        """Execute function with retry logic"""
+        """
+        Execute function with retry logic and exponential backoff
+        
+        Args:
+            fn: Function to execute (should be a no-arg callable)
+            
+        Raises:
+            Exception: If all retries fail
+        """
         for attempt in range(self.max_retries):
             try:
                 fn()
@@ -678,23 +670,20 @@ class LakebaseForeachWriter:
                     raise
 
 
-# Example usage
+# Example usage and testing
 if __name__ == "__main__":
-    # Example configuration
-    client = LakebaseClient(instance_name="neha-lakebase-demo",
+    # Example configuration for testing
+    client = LakebaseClient(instance_name="rtm-lakebase-demo",
         database="databricks_postgres"
     )
     
     # Test connection
     if client.test_connection():
-        print("Connected to Lakebase!")
+        print("Connected to Lakebase PostgreSQL!")
         
-        # Create unified feature table (stateless + stateful features)
-        # Works for both use cases:
-        # - Transaction features (stateless only)
-        # - Fraud features (stateless + stateful)
-        client.create_feature_table("transaction_features")  # or "fraud_features"
+        # Create unified feature table (combines stateless + stateful features)
+        client.create_feature_table("transaction_features")
         
-        # Get stats
+        # Get table statistics
         stats = client.get_table_stats("transaction_features")
         print(f"Table stats: {stats}")
