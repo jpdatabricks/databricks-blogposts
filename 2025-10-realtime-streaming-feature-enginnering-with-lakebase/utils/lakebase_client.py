@@ -12,6 +12,7 @@ Author: Databricks
 Date: October 2025
 """
 
+from datetime import datetime
 import psycopg2
 from psycopg2 import OperationalError, DatabaseError
 from psycopg2.extras import execute_batch
@@ -494,13 +495,28 @@ class LakebaseForeachWriter:
             conflict_columns: Columns for ON CONFLICT clause (e.g., ["transaction_id"])
             batch_size: Number of rows to accumulate before writing
         """
+
         self.creds = creds
         self.database = database
-        self.table_name = table_name
-        self.column_names = column_names
+        self.table_name = table_name 
+        self.column_names = column_names 
         self.conflict_columns = conflict_columns
+        # Build upsert SQL
+        self.columns_str = ','.join(self.column_names)
+        self.placeholders = ','.join(['%s'] * len(self.column_names))
+        self.conflict_str = ','.join(self.conflict_columns)
+        self.update_cols = [col for col in self.column_names if col not in self.conflict_columns]
+        self.update_str = ','.join([f"{col}=EXCLUDED.{col}" for col in self.update_cols])
+        self.sql = f"""
+                INSERT INTO {self.table_name} ({self.columns_str})
+                VALUES ({self.placeholders})
+                ON CONFLICT ({self.conflict_str}) DO UPDATE SET {self.update_str}
+            """            
+
         self.batch_size = batch_size
         self.max_retries = 3
+        self.partition_id = None
+        self.epoch_id = None
         
         # Per-partition state
         self.conn = None
@@ -524,6 +540,9 @@ class LakebaseForeachWriter:
         try:
             logger.info(f"Opening connection for partition {partition_id}, epoch {epoch_id}")
             
+            self.partition_id = partition_id
+            self.epoch_id = epoch_id
+
             self.conn = psycopg2.connect(
                 host=self.creds['host'],
                 port=self.creds['port'],
@@ -564,6 +583,7 @@ class LakebaseForeachWriter:
             # Flush when batch is full
             if len(self.current_batch) >= self.batch_size:
                 self._execute_batch()
+            
         except Exception as e:
             logger.error(f"Error processing row: {e}")
             raise
@@ -581,7 +601,7 @@ class LakebaseForeachWriter:
         """
         try:
             if error is None and self.current_batch:
-                self._execute_batch()
+                self._execute_batch()                
             elif error is not None:
                 logger.error(f"Error in partition, rolling back: {error}")
                 if self.conn:
@@ -596,6 +616,7 @@ class LakebaseForeachWriter:
                     pass
             if self.conn:
                 try:
+                    logger.info(f"Closing connection for partition {self.partition_id}, epoch {self.epoch_id}")
                     self.conn.close()
                 except Exception:
                     pass
@@ -614,21 +635,7 @@ class LakebaseForeachWriter:
         def _execute():
             start_time = time.time()
             logger.info(f"Writing batch of {len(self.current_batch)} rows...")
-            
-            # Build upsert SQL
-            columns_str = ','.join(self.column_names)
-            placeholders = ','.join(['%s'] * len(self.column_names))
-            conflict_str = ','.join(self.conflict_columns)
-            update_cols = [col for col in self.column_names if col not in self.conflict_columns]
-            update_str = ','.join([f"{col}=EXCLUDED.{col}" for col in update_cols])
-            
-            sql = f"""
-                INSERT INTO {self.table_name} ({columns_str})
-                VALUES ({placeholders})
-                ON CONFLICT ({conflict_str}) DO UPDATE SET {update_str}
-            """
-            
-            execute_batch(self.cursor, sql, self.current_batch, page_size=self.batch_size)
+            execute_batch(self.cursor, self.sql, self.current_batch, page_size=self.batch_size)
             self.conn.commit()
             self.current_batch = []
             

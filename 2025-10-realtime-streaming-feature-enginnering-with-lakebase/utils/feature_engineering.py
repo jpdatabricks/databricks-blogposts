@@ -361,7 +361,8 @@ def get_fraud_detection_output_schema():
         StructField("is_impossible_travel", IntegerType(), False),
         StructField("is_amount_anomaly", IntegerType(), False),
         StructField("fraud_score", DoubleType(), False),
-        StructField("is_fraud_prediction", IntegerType(), False)
+        StructField("is_fraud_prediction", IntegerType(), False),
+        StructField("processing_timestamp", TimestampType(), False)
     ])
 
 
@@ -583,6 +584,8 @@ class FraudDetectionFeaturesProcessor:
             fraud_score = builtins.min(fraud_score, 100.0)
 
             is_fraud_pred = 1 if fraud_score >= 50 else 0
+            
+            processing_timestamp = datetime.now()
 
             # Assemble output row
             results.append(
@@ -611,6 +614,7 @@ class FraudDetectionFeaturesProcessor:
                     is_amount_anomaly=is_amount_anomaly,
                     fraud_score=fraud_score,
                     is_fraud_prediction=is_fraud_pred,
+                    processing_timestamp=processing_timestamp
                 )
             )
 
