@@ -58,7 +58,6 @@ class LakebaseClient:
         Returns:
             dict: Dictionary containing host, port, user, and password
         """
-        conn = None
         try:
             w = WorkspaceClient()
             print(databricks.sdk.version.__version__)
