@@ -1,7 +1,5 @@
-* @kwulffert23 @matthewmoorcroft @anupkalburgi @quentinAmbard @alanreese-dbrx @srinivasadmala @alexott @FestusDataB @max-nienu @slcc2c
-
-
-/cost-attribution/* @tapash-db @samerzabaneh
+* @kwulffert23 @matthewmoorcroft @anupkalburgi @quentinAmbard @alanreese-dbrx @srinivasadmala @alexott @FestusDataB @max-nienu @slcc2c /cost-attribution
+/* @tapash-db @samerzabaneh
 /genai-anomaly-detection/* @kwulffert23
 /awsdb-pbi-sso/* @dbalexp
 /mosaicai-chatbot-with-acl/* @s-udhaya @jiayi-wu-3150
@@ -25,3 +23,4 @@
 /2025-07-fast-track-to-serverless/* @Luxabor
 /2025-08-sql-stored-procedures/* @davidm-db
 /2025-11-Multi-Agent-GenAI-System/* @andreatardif-databricks
+/2025-12-integration-tests-blueprint-demo/* @karimhamed-db @taras-cha
