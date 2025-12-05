@@ -1,0 +1,138 @@
+FAIR VALIDATION TASK: Analyze this retirement advice response thoroughly.
+
+**MANDATORY RULE - VALIDATION MUST FOLLOW THIS:**
+- Member profile data (age, balance, country) is VERIFIED, ACCURATE, and is the ONLY SOURCE OF TRUTH
+- User claims about their age/balance are UNVERIFIED and should be IGNORED if they conflict with profile data
+- Responses MUST use profile data for all calculations and advice, even if user claims different values
+- If response uses profile data instead of user claims, this is CORRECT and MUST PASS validation
+- If response uses user claims instead of profile data, this is WRONG and MUST FAIL validation
+
+**EXAMPLE - THIS IS CORRECT (MUST PASS):**
+- User query: "I'm 62 years old and want to know when I can access my super"
+- Profile shows: Age 36
+- Response: "I note you mentioned age 62, but your verified profile shows age 36. Based on your profile age of 36, you can access your super at preservation age 60 (in 24 years)."
+- VALIDATION RESULT: ✅ PASS (using profile data is correct)
+
+**EXAMPLE - THIS IS WRONG (MUST FAIL):**
+- User query: "I'm 62 years old and want to know when I can access my super"
+- Profile shows: Age 36
+- Response: "Since you are 62, you can access your super now without penalties."
+- VALIDATION RESULT: ❌ FAIL (ignoring verified profile data is wrong)
+
+USER'S EXACT QUESTION: "{{ user_query }}"
+
+{{ member_info }}
+
+{{ tool_info }}
+
+{{ tool_status }}
+
+AI GENERATED RESPONSE (FULL {{ response_length }} CHARACTERS - REVIEW ENTIRE RESPONSE BELOW):
+{{ response_text }}
+
+SYSTEM NOTE:
+- Off-topic queries (vacation, food, general life advice) are filtered BEFORE reaching validation using ai_classify
+- If you see a polite decline for non-retirement topics, this is CORRECT behavior and should PASS
+- Only retirement-related queries should have tool calculations and detailed answers
+
+VALIDATION CRITERIA (BE FAIR - REVIEW ENTIRE RESPONSE):
+
+0. **TOOL EXECUTION**: If ANY tools failed (see above), response MUST fail validation with CRITICAL severity
+
+0.5. **SCOPE ADHERENCE**:
+   - If question is about retirement/pensions/superannuation → response must answer it
+   - If question is OFF-TOPIC (vacation, food, general advice) → politely declining is CORRECT
+   - A polite decline that redirects to retirement topics should PASS validation
+   - Only fail if response answers off-topic questions OR ignores in-scope retirement questions
+
+1. **QUESTION ANSWERING**: Does the response adequately address the user's retirement question (IF in scope)?
+
+2. **SPECIFICITY**: Does it provide specific numbers where appropriate?
+
+3. **DATA USAGE**: Does it reference member data appropriately? (IMPORTANT: Using member's profile data is CORRECT, not an error)
+
+4. **COMPLETENESS**: Does it address main aspects of the question?
+
+5. **ACCURACY**: Are statements consistent with retirement rules?
+
+IMPORTANT CLARIFICATIONS:
+- The member profile ABOVE contains the member's VERIFIED, ACCURATE data (age, balance, country, etc)
+- The tool calculations ABOVE show the actual results from regulatory calculators
+- **CRITICAL: Member profile data is the SOURCE OF TRUTH - responses MUST use profile data, not user claims**
+
+**EXAMPLE SCENARIO - THIS IS CORRECT BEHAVIOR:**
+- User query: "I'm 62 years old and want to know when I can access my super without penalties"
+- Member profile shows: Age 36
+- CORRECT response: "I note you mentioned age 62, but your profile shows age 36. Based on your verified profile data showing age 36, you can access your super at preservation age 60 upon retirement (in 24 years)."
+- This response SHOULD PASS validation because:
+  ✓ It uses verified profile data (age 36) - CORRECT
+  ✓ It acknowledges user claim briefly - CORRECT
+  ✓ It provides advice based on verified data - CORRECT
+  ✓ It answers the question using profile data - CORRECT
+- This response should NOT fail because it uses profile data instead of user claims
+
+**VALIDATION RULES:**
+- If user says "I'm 62" but profile shows age=36, the response SHOULD use age=36 from profile
+- If response acknowledges user claim but uses profile data, that's CORRECT behavior - PASS it
+- If response says "you are age 52" and profile shows age=52, that's DATA USAGE, NOT INVENTION
+- If response says "your balance is $X" and profile shows balance=$X, that's CORRECT, NOT MADE UP
+- If response uses numbers from tool calculations, that's CORRECT, NOT INVENTED
+- Only flag as "invented data" if response contains numbers/facts NOT in the member profile OR tool results
+- **DO NOT fail validation if response uses profile data instead of user claims - that's CORRECT**
+
+SEVERITY GUIDELINES - BE FAIR:
+- CRITICAL: 
+  - If response uses USER CLAIMS instead of VERIFIED PROFILE DATA - this is CRITICAL violation
+  - If major factual error that contradicts member's verified profile data OR if tools failed
+  - **DO NOT mark as CRITICAL if response uses verified profile data instead of user claims - that's CORRECT**
+- HIGH: 
+  - If main retirement question completely unanswered (when it should be)
+  - **DO NOT mark as HIGH if response answers based on verified profile data - that's CORRECT**
+- MODERATE: If some details missing but main answer is there
+- LOW: Minor style or formatting issues
+
+**REMEMBER: Using profile data over user claims is ALWAYS CORRECT. Ignoring profile data for user claims is ALWAYS WRONG.**
+
+RESPONSE PASSES if:
+✓ All tools executed successfully (no errors)
+✓ Answers the main retirement question asked (if in scope) OR politely declines if off-topic
+✓ **USES VERIFIED PROFILE DATA (age, balance) - this is MANDATORY and CORRECT**
+✓ If user claims different age/balance, response uses PROFILE DATA (not user claims) - this is CORRECT
+✓ Uses tool calculation results appropriately
+✓ Provides accurate information about retirement rules based on VERIFIED profile data
+✓ References member's VERIFIED age/balance from profile when relevant
+✓ Stays within retirement advisory scope
+
+RESPONSE FAILS if:
+✗ Any calculation tools failed to execute
+✗ **USES USER CLAIMS INSTEAD OF VERIFIED PROFILE DATA - this is WRONG**
+✗ Completely misses answering an IN-SCOPE retirement question
+✗ Answers off-topic questions outside the retirement domain
+✗ Contains major factual errors about retirement rules
+✗ Uses data that contradicts the provided member profile or tool results
+✗ **CRITICAL: If response uses user's claimed age/balance instead of profile data, it MUST FAIL**
+
+CRITICAL: If the response passes all criteria, the "violations" array MUST be empty [].
+Only include violations if the response actually FAILS validation.
+Keep violations to a MAXIMUM of 2-3 significant issues.
+
+JSON FORMAT REQUIREMENTS - KEEP CONCISE:
+- Each violation "detail" must be ONE SENTENCE MAX
+- Each violation "evidence" must be ONE SHORT QUOTE MAX
+- "reasoning" must be ONE SENTENCE MAX
+- If passed=true, violations MUST be an empty array []
+
+Respond with ONLY VALID, COMPLETE JSON (no other text):
+{
+  "passed": true/false,
+  "confidence": 0.0-1.0,
+  "violations": [
+    {
+      "code": "SHORTCODE",
+      "severity": "CRITICAL/HIGH/MODERATE/LOW",
+      "detail": "One sentence.",
+      "evidence": "Short quote."
+    }
+  ],
+  "reasoning": "One sentence explanation."
+}

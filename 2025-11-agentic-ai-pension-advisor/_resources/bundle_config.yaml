@@ -1,0 +1,171 @@
+# Databricks Demos - Bundle Configuration
+# Agentic AI Multi-Country Pension Advisor
+
+name: "agentic-pension-advisor"
+category: "financial-services"
+title: "Agentic AI Multi-Country Pension Advisor"
+description: |
+  Production-grade agentic AI pension advisor supporting 4 countries (AU, US, UK, IN)
+  using Databricks Lakehouse, Unity Catalog governance, and Claude-based agentic AI.
+
+  **Key Features:**
+  - Multi-country support with country-specific regulations (AU, US, UK, IN)
+  - Unity Catalog for data governance and access control
+  - LLM-based agent with tool calling for retirement calculations
+  - Real-time monitoring with MLflow experiment tracking
+  - Comprehensive audit logging and compliance
+  - Streamlit-based interactive UI
+
+  **Use Case:**
+  Demonstrates how to build production-grade agentic AI applications on Databricks
+  for regulated industries like financial services, handling complex multi-country
+  compliance requirements.
+
+# Installation requirements
+custom_schema_supported: true
+default_catalog: "pension_blog"  # Change this to match your config.yaml unity_catalog value
+default_schema: "pension_advisory"  # Single schema for all tables and functions
+
+# Databricks Runtime requirements
+min_dbr_version: "14.3"
+cloud: "all"  # Works on AWS, Azure, GCP
+
+# Cluster configuration
+cluster:
+  spark_version: "14.3.x-scala2.12"
+  node_type_id: "i3.xlarge"
+  driver_node_type_id: "i3.xlarge"
+  num_workers: 2
+  spark_conf:
+    spark.databricks.cluster.profile: "serverless"
+
+# Demo notebooks
+notebooks:
+  # Setup notebooks
+  - path: "01-setup/01-unity-catalog-setup"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Unity Catalog Setup"
+    description: "Create catalog, schemas, tables, and UC functions for multi-country support"
+
+  - path: "01-setup/02-governance-setup"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Governance & Access Control"
+    description: "Set up row-level security, column masking, and audit logging"
+
+  # Agent framework notebooks
+  - path: "02-agent-demo/01-agent-overview"
+    pre_run: true
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Agent Framework Overview"
+    description: "Introduction to the multi-country agentic AI architecture"
+
+  - path: "02-agent-demo/02-build-agent"
+    pre_run: true
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Build Advisory Agent"
+    description: "Create the retirement advisory agent with LLM orchestration"
+
+  - path: "02-agent-demo/03-tool-integration"
+    pre_run: true
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Tool Integration"
+    description: "Integrate Unity Catalog functions as agent tools"
+
+  - path: "02-agent-demo/04-validation"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Response Validation"
+    description: "LLM-as-a-Judge validation for response quality"
+
+  - path: "02-agent-demo/05-mlflow-deployment"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "MLflow Model Deployment"
+    description: "Package and deploy agent as MLflow model"
+
+  - path: "02-agent-demo/06-ai-guardrails"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "AI Guardrails"
+    description: "Content safety and compliance guardrails"
+
+  - path: "02-agent-demo/07-production-monitoring"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Production Monitoring"
+    description: "Monitor production agent deployment"
+
+  - path: "02-agent-demo/08-automated-scoring-job"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Automated Scoring Job"
+    description: "Batch scoring job for production workflows"
+
+  # Monitoring notebooks
+  - path: "03-monitoring-demo/01-mlflow-tracking"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "MLflow Experiment Tracking"
+    description: "Track agent performance, costs, and quality metrics"
+
+  - path: "03-monitoring-demo/02-observability"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Agent Observability"
+    description: "Monitor agent behavior, latency, and tool usage"
+
+  - path: "03-monitoring-demo/03-dashboard"
+    pre_run: false
+    publish_on_website: true
+    add_cluster_setup_cell: true
+    title: "Governance Dashboard"
+    description: "Interactive dashboard for audit logs and compliance"
+
+# Initialization job (runs on demo install)
+init_job:
+  name: "Agentic Pension Advisor Setup"
+  tasks:
+    - task_key: "unity_catalog_setup"
+      notebook_task:
+        notebook_path: "01-setup/01-unity-catalog-setup"
+    - task_key: "governance_setup"
+      notebook_task:
+        notebook_path: "01-setup/02-governance-setup"
+      depends_on:
+        - task_key: "unity_catalog_setup"
+
+# Dashboards to create
+dashboards:
+  - name: "Agentic Pension Advisor - Governance Dashboard"
+    id: "governance_dashboard"
+    path: "03-monitoring-demo/governance_dashboard.json"
+
+# Tags for categorization
+tags:
+  - "financial-services"
+  - "agentic-ai"
+  - "unity-catalog"
+  - "governance"
+  - "multi-country"
+  - "llm"
+  - "claude"
+  - "mlflow"
+
+# Additional metadata
+bundle_version: "1.0.0"
+author: "Databricks"
+last_updated: "2025-11-25"
