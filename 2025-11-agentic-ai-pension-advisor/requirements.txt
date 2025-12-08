@@ -1,0 +1,17 @@
+# Requirements for Databricks Serverless notebooks
+# Serverless has a minimal runtime, so we need to install more packages
+
+# MLflow (not always in serverless runtime)
+mlflow>=2.8.0
+
+# Databricks SDK (needed for WorkspaceClient, SQL execution)
+databricks-sdk>=0.12.0
+
+# Configuration Management (required for src.config to load config.yaml)
+PyYAML>=6.0.0
+
+# Template Engine (required for src.prompts.template_manager)
+Jinja2>=3.1.0
+
+# Data Generation (used in 01-setup/01-unity-catalog-setup.py for demo data)
+Faker>=28.0.0

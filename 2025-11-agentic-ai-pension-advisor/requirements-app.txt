@@ -1,0 +1,27 @@
+# Requirements for Streamlit Application
+# Use this file for running the app locally or deploying to Databricks Apps
+
+# Core Framework
+streamlit==1.51.0
+
+# Databricks & MLflow
+mlflow>=2.8.0
+databricks-sdk>=0.12.0
+
+# Data Processing
+pandas>=2.0.0
+
+# Data Generation (for demos)
+faker>=28.0.0
+
+# Visualization
+plotly>=5.14.0
+
+# Type Checking
+pydantic>=2.0.0
+
+# Configuration Management
+PyYAML>=6.0.0
+
+# Template Engine
+Jinja2>=3.1.0
