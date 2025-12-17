@@ -27,7 +27,7 @@
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC ##Run the data generation simulaters below
+// MAGIC ##Run the data generation simulators below
 
 // COMMAND ----------
 
