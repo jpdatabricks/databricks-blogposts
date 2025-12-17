@@ -126,7 +126,7 @@ println("stream process completed..")
 
 // MAGIC %md
 // MAGIC ####The below chart displays the latency differences between RTM and Trigger Mode (lower is better)
-// MAGIC ####As you can see, for every percentile ameasured RTM out performs Trigger Mode from anywhere from x ms to y ms and by an average of z ms. 
+// MAGIC ####As you can see, for every percentile a measured RTM out performs Trigger Mode from anywhere from x ms to y ms and by an average of z ms. 
 // MAGIC
 
 // COMMAND ----------
