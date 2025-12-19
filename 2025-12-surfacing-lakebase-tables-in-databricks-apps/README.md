@@ -2,6 +2,12 @@
 
 A Streamlit application for viewing PostgreSQL synced tables in Databricks using OAuth authentication.
 
+## 📝 Blog Post
+
+This code accompanies the Databricks blog post: [Surfacing Lakebase Tables in Databricks Apps](https://www.databricks.com/blog/TBD)
+
+> **Note:** Update the link above once the blog post is published.
+
 ## 🔧 **Before You Start - Required Configuration**
 
 **⚠️ IMPORTANT:** This repository contains placeholder configurations. You MUST update these values for your specific database:
@@ -186,4 +192,13 @@ streamlit run app.py
 
 ## License
 
-This project is part of the Databricks Lakebase ecosystem.
+This project is licensed under the [Databricks License](../LICENSE).
+
+### Third-Party Dependencies
+
+| Package | License |
+|---------|---------|
+| [Streamlit](https://streamlit.io/) | Apache 2.0 |
+| [psycopg](https://www.psycopg.org/) | LGPL 3.0 |
+| [SQLAlchemy](https://www.sqlalchemy.org/) | MIT |
+| [Databricks SDK](https://github.com/databricks/databricks-sdk-py) | Apache 2.0 |
