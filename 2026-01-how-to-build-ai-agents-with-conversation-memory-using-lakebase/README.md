@@ -57,7 +57,7 @@ lakebase-memory-accelerator/
 ### Prerequisites
 
 1. **Databricks Workspace** with Unity Catalog enabled
-2. **Lakebase Instance** - Create via SQL Warehouses → Lakebase Postgres → Create database instance
+2. **Lakebase Instance** - Create via Compute → Lakebase Postgres → Create database instance
 3. **Model Serving Permissions** for agent deployment
 4. **Secret Scope** for storing credentials (default: `dbdemos`)
 
