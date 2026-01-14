@@ -47,7 +47,7 @@ SYSTEM_PROMPT = """
 # Lakebase configuration
 ############################################
 # TODO: Fill in Lakebase instance name
-LAKEBASE_INSTANCE_NAME = "bo-test-lakebase-3"
+LAKEBASE_INSTANCE_NAME = "<INSERT LAKEBASE NAME>"
 
 ###############################################################################
 ## Define tools for your agent,enabling it to retrieve data or take actions
@@ -59,8 +59,8 @@ tools = []
 
 # Example UC tools; add your own as needed
 UC_TOOL_NAMES: list[str] = [
-    "bo_cheng_dnb_demos.agents.get_cyber_threat_info",
-    "bo_cheng_dnb_demos.agents.get_user_info",
+    "catalog.schema.get_cyber_threat_info",
+    "catalog.schema.get_user_info",
 ]
 if UC_TOOL_NAMES:
     uc_toolkit = UCFunctionToolkit(function_names=UC_TOOL_NAMES)
