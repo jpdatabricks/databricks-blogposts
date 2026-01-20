@@ -186,7 +186,6 @@ Use `checkpoints-example-query.dbquery.ipynb` to:
             );
           END LOOP;
         END $$;
-    ```
 
 ## Security and Governance
 
