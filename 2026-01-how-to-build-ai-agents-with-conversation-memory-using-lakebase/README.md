@@ -168,6 +168,25 @@ Use `checkpoints-example-query.dbquery.ipynb` to:
 ## Permissions
 
 - If not workspace admin, it is highly recommended to leverage [manual authentication](https://docs.databricks.com/aws/en/generative-ai/agent-framework/agent-authentication#manual-authentication) and to comment out the `DatabricksLakebase` resource to avoid system generated service principal grants
+- If manual authentication is not an option then it is recommended to grant the system generated service principal roles on your lakebase instance:
+    - ```DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename LIKE 'checkpoint%'
+  LOOP
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE ON TABLE public.%I TO %I;',
+      r.tablename,
+      'SSP-UUID-HERE'
+    );
+  END LOOP;
+END $$;
+```
 
 ## Security and Governance
 
