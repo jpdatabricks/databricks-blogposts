@@ -57,9 +57,11 @@ lakebase-memory-accelerator/
 ### Prerequisites
 
 1. **Databricks Workspace** with Unity Catalog enabled
-2. **Lakebase Instance** - Create via Compute → Lakebase Postgres → Create database instance
-3. **Model Serving Permissions** for agent deployment
-4. **Secret Scope** for storing credentials (default: `dbdemos`)
+    * Preferred workspace admin privileges
+    * If non workspace admin follow **Permissions** Section
+3. **Lakebase Instance** - Create via Compute → Lakebase Postgres → Create database instance
+4. **Model Serving Permissions** for agent deployment
+5. **Secret Scope** for storing credentials (default: `dbdemos`)
 
 ### Setup Instructions
 
@@ -162,6 +164,10 @@ Use `checkpoints-example-query.dbquery.ipynb` to:
 - Model versioning and lineage
 - Performance metrics
 - Experiment comparison
+
+## Permissions
+
+- If not workspace admin, it is highly recommended to leverage [manual authentication](https://docs.databricks.com/aws/en/generative-ai/agent-framework/agent-authentication#manual-authentication) and to comment out the `DatabricksLakebase` resource to avoid system generated service principal grants
 
 ## Security and Governance
 
