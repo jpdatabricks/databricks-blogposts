@@ -38,7 +38,7 @@ const PremiumChatBotUI = () => {
       setIsLoading(true);
 
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/chat/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
