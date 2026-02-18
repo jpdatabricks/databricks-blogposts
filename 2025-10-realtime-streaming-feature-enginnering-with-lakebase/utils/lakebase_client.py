@@ -140,8 +140,6 @@ class LakebaseClient:
         This table combines BOTH stateless transaction features AND stateful fraud detection features
         in a single, comprehensive schema optimized for real-time ML model serving.
         
-        **OPTIMIZED SCHEMA**: Reduced from ~70 to ~48 columns by removing low-value features.
-        
         Use Case:
         - 01_streaming_fraud_detection_pipeline.ipynb: Writes all features to this table
         
@@ -290,7 +288,7 @@ class LakebaseClient:
                 cursor = conn.cursor()
                 cursor.execute(create_table_sql)
                 cursor.close()
-                logger.info(f"Created optimized feature table: {table_name} (~48 columns, -31% vs previous)")
+                logger.info(f"Created optimized feature table: {table_name}")
         except Exception as e:
             logger.error(f"Error creating feature table: {e}")
             raise
