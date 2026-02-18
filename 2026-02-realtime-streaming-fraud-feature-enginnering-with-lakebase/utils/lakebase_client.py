@@ -12,15 +12,13 @@ Author: Databricks
 Date: October 2025
 """
 
-from datetime import datetime
 import psycopg2
 from psycopg2 import OperationalError, DatabaseError
 from psycopg2.extras import execute_batch
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 import pandas as pd
 from contextlib import contextmanager
-import databricks.sdk
 from databricks.sdk import WorkspaceClient
 import uuid
 import time
@@ -60,7 +58,6 @@ class LakebaseClient:
         """
         try:
             w = WorkspaceClient()
-            print(databricks.sdk.version.__version__)
             host = w.database.get_database_instance(name=self.instance_name).read_write_dns
             port = 5432
             cred = w.database.generate_database_credential(
@@ -292,54 +289,7 @@ class LakebaseClient:
         except Exception as e:
             logger.error(f"Error creating feature table: {e}")
             raise
-    
-    def write_streaming_batch(self, batch_df, batch_id: int, table_name: str, 
-                             batch_size: int = 10):
-        """
-        Write a streaming micro-batch to Lakebase PostgreSQL
-        
-        This method is designed to be used with foreachBatch in PySpark Structured Streaming.
-        It converts a Spark DataFrame to Pandas, then uses PostgreSQL's execute_batch for
-        efficient bulk inserts with UPSERT logic (INSERT ... ON CONFLICT DO UPDATE).
-        
-        Args:
-            batch_df: PySpark DataFrame (micro-batch from streaming query)
-            batch_id: Batch ID from streaming query (for logging)
-            table_name: Target table name in Lakebase PostgreSQL
-            batch_size: Number of rows per batch for execute_batch (default: 10)
-            
-        Raises:
-            Exception: If database write fails
-        """
-        logger.info(f"Processing batch {batch_id}...")
-        
-        pandas_df = batch_df.toPandas()
-        
-        if pandas_df.empty:
-            logger.warning(f"Batch {batch_id}: Empty DataFrame, skipping")
-            return
-        
-        columns = list(pandas_df.columns)
-        placeholders = ','.join(['%s'] * len(columns))
-        insert_sql = f"""
-            INSERT INTO {table_name} ({','.join(columns)})
-            VALUES ({placeholders})
-            ON CONFLICT (transaction_id) DO UPDATE SET
-            {','.join([f"{col}=EXCLUDED.{col}" for col in columns if col != 'transaction_id'])}
-        """
-        
-        data = [tuple(row) for row in pandas_df.values]
-        
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                execute_batch(cursor, insert_sql, data, page_size=batch_size)
-                cursor.close()
-                logger.info(f"Batch {batch_id} complete: {len(pandas_df)} rows written")
-        except Exception as e:
-            logger.error(f"Error writing batch {batch_id}: {e}")
-            raise
-    
+
     def read_features(self, query: str) -> pd.DataFrame:
         """
         Read features from Lakebase using SQL query
@@ -431,8 +381,8 @@ class LakebaseClient:
             raise
 
     def get_foreach_writer(self, table_name: str = "transaction_features",
-                    column_names: List[str] = None,       
-                    conflict_columns: List[str] = None,
+            column_names: List[str] = None,
+            conflict_columns: List[str] = None,
                     batch_size: int = 10):
         """
         Create a ForeachWriter for per-partition streaming writes to Lakebase

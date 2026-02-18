@@ -9,7 +9,7 @@ class Config:
         """
 
         # Kafka configuration for streaming data ingestion
-        # Ensure These secrets are added to the workspace before accessing them
+        # Ensure these secrets are added to the workspace before accessing them
 
         # Example: How to add these secrets to Databricks using CLI (not via the notebook)
         # databricks secrets create-scope --scope KAFKA_SERVER_SCOPE
@@ -36,8 +36,8 @@ class Config:
         
         # Lakebase configuration for data storage
         self.lakebase_config = {
-            "instance_name": "rtm-lakebase-demo", #Replace with appropriate lakebase instance name
-            "database": "databricks_postgres" #This is the default value. 
+            "instance_name": "rtm-lakebase-demo",  # Replace with appropriate lakebase instance name
+            "database": "databricks_postgres"  # This is the default value. 
         }
 
 

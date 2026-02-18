@@ -18,8 +18,6 @@ Date: October 2025
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
-import time
-from datetime import datetime, timedelta
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -55,7 +53,7 @@ class TransactionDataGenerator:
         Args:
             num_users: Number of unique users
             num_merchants: Number of unique merchants
-            rows_per_second: Ignored, kept for compatibility
+            rows_per_second: Rows per second for streaming generation
             num_rows: Number of rows to generate
             
         Returns:

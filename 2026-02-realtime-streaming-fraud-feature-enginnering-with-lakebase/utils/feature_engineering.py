@@ -403,7 +403,7 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2):
 class FraudDetectionFeaturesProcessor:
     """
     Stateful processor for real‑time fraud detection using
-    ``transformWithStateInPandas``.
+    ``transformWithState``.
 
     The processor maintains a single consolidated state per user and
     computes a rich set of fraud‑related features, including:
@@ -423,7 +423,7 @@ class FraudDetectionFeaturesProcessor:
 
     def init(self, handle) -> None:
         """
-        Initialise the processor with a single consolidated ``ValueState``.
+        Initialize the processor with a single consolidated ``ValueState``.
         """
         self.handle = handle
 
