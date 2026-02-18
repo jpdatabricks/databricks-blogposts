@@ -32,7 +32,7 @@ ui_app = StaticFiles(directory="client/build", html=True)
 api_app = FastAPI()
 
 # PLEASE NOTE THE ORDER OF THE MOUNTS MATTERS
-app.mount("/api", api_app)
+app.mount("/chat", api_app)
 app.mount("/", ui_app)
 
 origins = [
