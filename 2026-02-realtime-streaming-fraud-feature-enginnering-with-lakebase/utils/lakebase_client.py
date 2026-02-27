@@ -12,6 +12,7 @@ Author: Databricks
 Date: October 2025
 """
 
+import re
 import psycopg2
 from psycopg2 import OperationalError, DatabaseError
 from psycopg2.extras import execute_batch
@@ -22,6 +23,13 @@ from contextlib import contextmanager
 from databricks.sdk import WorkspaceClient
 import uuid
 import time
+
+_SAFE_IDENTIFIER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+def _validate_identifier(name: str, label: str = "identifier") -> None:
+    """Raise ValueError if name is not a safe SQL identifier."""
+    if not _SAFE_IDENTIFIER_RE.match(name):
+        raise ValueError(f"Invalid {label} '{name}': must contain only letters, digits, and underscores")
 
 
 
@@ -176,6 +184,7 @@ class LakebaseClient:
         - Optimized schema with only high-value features
         - 30% storage reduction per row
         """
+        _validate_identifier(table_name, "table_name")
         create_table_sql = f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
             -- Primary keys
@@ -328,14 +337,18 @@ class LakebaseClient:
         Example:
             features = lakebase.get_recent_features("user_000001", hours=6)
         """
-        query = f"""
-            SELECT *
-            FROM {table_name}
-            WHERE user_id = '{user_id}'
-            AND timestamp > NOW() - INTERVAL '{hours} hours'
-            ORDER BY timestamp DESC
-        """
-        return self.read_features(query)
+        _validate_identifier(table_name, "table_name")
+        if not isinstance(hours, int) or hours < 0:
+            raise ValueError(f"hours must be a non-negative integer, got: {hours!r}")
+        query = f"SELECT * FROM {table_name} WHERE user_id = %s AND timestamp > NOW() - INTERVAL %s ORDER BY timestamp DESC"
+        try:
+            with self.get_connection() as conn:
+                df = pd.read_sql(query, conn, params=(user_id, f"{hours} hours"))
+                logger.info(f"Read {len(df)} rows for user {user_id!r}")
+                return df
+        except Exception as e:
+            logger.error(f"Error reading recent features: {e}")
+            raise
     
     def get_table_stats(self, table_name: str = "transaction_features") -> Dict:
         """
@@ -380,8 +393,8 @@ class LakebaseClient:
             logger.error(f"Error getting table stats: {e}")
             raise
 
-    def get_foreach_writer(self, table_name: str = "transaction_features",
-            column_names: List[str] = None,
+    def get_foreach_writer(self, column_names: List[str],
+            table_name: str = "transaction_features",
             conflict_columns: List[str] = None,
                     batch_size: int = 10):
         """
@@ -443,22 +456,32 @@ class LakebaseForeachWriter:
             batch_size: Number of rows to accumulate before writing
         """
 
+        if not column_names:
+            raise ValueError("column_names must be provided and non-empty")
         self.creds = creds
         self.database = database
-        self.table_name = table_name 
-        self.column_names = column_names 
+        self.table_name = table_name
+        self.column_names = column_names
         self.conflict_columns = conflict_columns
         # Build upsert SQL
         self.columns_str = ','.join(self.column_names)
         self.placeholders = ','.join(['%s'] * len(self.column_names))
         self.conflict_str = ','.join(self.conflict_columns)
         self.update_cols = [col for col in self.column_names if col not in self.conflict_columns]
-        self.update_str = ','.join([f"{col}=EXCLUDED.{col}" for col in self.update_cols])
-        self.sql = f"""
-                INSERT INTO {self.table_name} ({self.columns_str})
-                VALUES ({self.placeholders})
-                ON CONFLICT ({self.conflict_str}) DO UPDATE SET {self.update_str}
-            """            
+        if self.update_cols:
+            self.update_str = ','.join([f"{col}=EXCLUDED.{col}" for col in self.update_cols])
+            self.sql = f"""
+                    INSERT INTO {self.table_name} ({self.columns_str})
+                    VALUES ({self.placeholders})
+                    ON CONFLICT ({self.conflict_str}) DO UPDATE SET {self.update_str}
+                """
+        else:
+            self.update_str = ""
+            self.sql = f"""
+                    INSERT INTO {self.table_name} ({self.columns_str})
+                    VALUES ({self.placeholders})
+                    ON CONFLICT ({self.conflict_str}) DO NOTHING
+                """
 
         self.batch_size = batch_size
         self.max_retries = 3

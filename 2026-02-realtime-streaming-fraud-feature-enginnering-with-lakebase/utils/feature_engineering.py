@@ -279,10 +279,15 @@ class AdvancedFeatureEngineering:
         
         df_network = df \
             .withColumn("is_private_ip",
-                       when(col("ip_address").startswith("10.") |
-                            col("ip_address").startswith("192.168.") |
-                            col("ip_address").startswith("172."), 1)
-                       .otherwise(0))
+                       when(
+                           col("ip_address").startswith("10.") |
+                           col("ip_address").startswith("192.168.") |
+                           (
+                               col("ip_address").startswith("172.") &
+                               split(col("ip_address"), "\\.").getItem(1).cast("int").between(16, 31)
+                           ),
+                           1
+                       ).otherwise(0))
         
         return df_network
     
@@ -532,24 +537,29 @@ class FraudDetectionFeaturesProcessor:
                 if distance_km is not None and time_diff and time_diff > 0:
                     velocity_kmh = (distance_km / time_diff) * 3600
 
-            # Amount statistics
-            prev_total_amount += current_amount
-            prev_avg_amount = prev_total_amount / prev_count
-            prev_max_amount = builtins.max(prev_max_amount, current_amount)
+            # Capture historical stats BEFORE updating with the current transaction
+            # so anomaly ratios measure how current_amount compares to past behaviour.
+            historical_avg_amount = prev_avg_amount
+            historical_max_amount = prev_max_amount
 
             amount_vs_avg_ratio = (
-                current_amount / prev_avg_amount if prev_avg_amount > 0 else 1.0
+                current_amount / historical_avg_amount if historical_avg_amount > 0 else 1.0
             )
             amount_vs_max_ratio = (
-                current_amount / prev_max_amount if prev_max_amount > 0 else 1.0
+                current_amount / historical_max_amount if historical_max_amount > 0 else 1.0
             )
 
             # Z‑score (requires at least 3 prior amounts)
             amount_zscore = None
             if len(prev_amounts) >= 3:
                 std = np.std(prev_amounts)
-                if std > 0:
-                    amount_zscore = (current_amount - prev_avg_amount) / std
+                if std > 0 and historical_avg_amount is not None:
+                    amount_zscore = (current_amount - historical_avg_amount) / std
+
+            # Update amount statistics with the current transaction for future rows
+            prev_total_amount += current_amount
+            prev_avg_amount = prev_total_amount / prev_count
+            prev_max_amount = builtins.max(prev_max_amount, current_amount)
 
             # Update recent‑transaction buffers (capped at 50)
             prev_times.append(current_time)
