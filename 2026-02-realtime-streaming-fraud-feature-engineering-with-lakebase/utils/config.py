@@ -19,7 +19,7 @@ class Config:
         self.kafka_config = {
             "kafka_topic": "fraud_feature_eng_example",
             "kafka_credentials_secrets": {
-                "scope": "KAFKA_SERVER_SCOPE",
+                "scope": "KAFKA_SERVER_SCOPE", # Replace with appropriate scope name. 
                 "server": "KAFKA_SERVER",
                 "username": "KAFKA_USERNAME",
                 "secret": "KAFKA_SECRET",
